@@ -99,11 +99,7 @@ router.get('/', authenticate, async (req, res) => {
     const params = [];
     const conditions = [];
 
-    // Employees can only see their own data
-    if (req.user.role === 'Employee') {
-      conditions.push(`e.user_id = $${params.length + 1}`);
-      params.push(req.user.id);
-    }
+    // Employees can view all employees (read-only directory access)
     // Manager can view all employees (read-only)
     // Admin and HR Officer can view all employees (with edit/delete)
 
@@ -134,24 +130,68 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
+// Get employees with today's status (for dashboard)
+router.get('/with-status', authenticate, async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    
+    let query = `
+      SELECT 
+        e.id,
+        e.employee_id,
+        e.first_name,
+        e.last_name,
+        e.profile_image_url,
+        e.department,
+        e.position,
+        a.status as attendance_status,
+        a.check_in,
+        a.check_out,
+        CASE 
+          WHEN l.id IS NOT NULL AND l.status = 'Approved' AND CAST($1 AS DATE) BETWEEN l.start_date AND l.end_date THEN 'on_leave'
+          WHEN a.status = 'Present' AND a.check_in IS NOT NULL THEN 'present'
+          WHEN a.status = 'Absent' OR (a.id IS NULL AND l.id IS NULL) THEN 'absent'
+          ELSE 'unknown'
+        END as current_status
+      FROM employees e
+      LEFT JOIN attendance a ON e.id = a.employee_id AND a.date = CAST($1 AS DATE)
+      LEFT JOIN leaves l ON e.id = l.employee_id 
+        AND l.status = 'Approved' 
+        AND CAST($1 AS DATE) BETWEEN l.start_date AND l.end_date
+    `;
+    const params = [today];
+    const conditions = [];
+
+    // Employees can only see their own data
+    if (req.user.role === 'Employee') {
+      conditions.push(`e.user_id = $${params.length + 1}`);
+      params.push(req.user.id);
+    }
+
+    if (conditions.length > 0) {
+      query += ' WHERE ' + conditions.join(' AND ');
+    }
+
+    query += ' ORDER BY e.first_name ASC';
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Get employees with status error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Get single employee
 router.get('/:id', authenticate, async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Employees can only view their own data
-    if (req.user.role === 'Employee') {
-      const employeeCheck = await pool.query(
-        'SELECT user_id FROM employees WHERE id = $1',
-        [id]
-      );
-      if (employeeCheck.rows.length === 0 || employeeCheck.rows[0].user_id !== req.user.id) {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
-    }
+    // Employees can view all employee records (read-only directory access)
+    // No restriction - all authenticated users can view employee details
 
     const result = await pool.query(
-      `SELECT e.*, u.username, u.role
+      `SELECT e.*, u.username, u.role, u.id as user_id
        FROM employees e
        LEFT JOIN users u ON e.user_id = u.id
        WHERE e.id = $1`,
@@ -250,14 +290,23 @@ router.post('/', authenticate, authorize('Admin', 'HR Officer'), [
     const generatedPassword = generatePassword();
     const hashedPassword = await bcrypt.hash(generatedPassword, 10);
 
+    // Get role from request body, default to 'Employee' if not provided
+    const userRole = req.body.role || 'Employee';
+    
+    // Validate role
+    const allowedRoles = ['Admin', 'HR Officer', 'Payroll Officer', 'Manager', 'Employee'];
+    if (!allowedRoles.includes(userRole)) {
+      return res.status(400).json({ error: 'Invalid role. Allowed roles: Admin, HR Officer, Payroll Officer, Manager, Employee' });
+    }
+
     // Create user account with auto-generated Login ID and password
     // Use loginId as email if email is not provided (for unique constraint)
     const userEmail = finalEmail || `${loginId}@workzen.local`;
     const userResult = await pool.query(
       `INSERT INTO users (login_id, email, password, role, is_password_changed)
-       VALUES ($1, $2, $3, 'Employee', FALSE)
-       RETURNING id, login_id, email`,
-      [loginId, userEmail, hashedPassword]
+       VALUES ($1, $2, $3, $4, FALSE)
+       RETURNING id, login_id, email, role`,
+      [loginId, userEmail, hashedPassword, userRole]
     );
 
     const userId = userResult.rows[0].id;
@@ -289,8 +338,8 @@ router.post('/', authenticate, authorize('Admin', 'HR Officer'), [
   }
 });
 
-// Update employee
-router.put('/:id', authenticate, [
+// Update employee (Admin, HR Officer only - Employees cannot modify)
+router.put('/:id', authenticate, authorize('Admin', 'HR Officer'), [
   body('firstName').optional().notEmpty(),
   body('lastName').optional().notEmpty(),
 ], async (req, res) => {
@@ -302,20 +351,7 @@ router.put('/:id', authenticate, [
 
     const { id } = req.params;
 
-    // Check permissions
-    if (req.user.role === 'Employee') {
-      const employeeCheck = await pool.query(
-        'SELECT user_id FROM employees WHERE id = $1',
-        [id]
-      );
-      if (employeeCheck.rows.length === 0 || employeeCheck.rows[0].user_id !== req.user.id) {
-        return res.status(403).json({ error: 'Forbidden' });
-      }
-    } else if (req.user.role === 'Manager') {
-      return res.status(403).json({ error: 'Manager can only view employees' });
-    } else if (!['Admin', 'HR Officer'].includes(req.user.role)) {
-      return res.status(403).json({ error: 'Forbidden' });
-    }
+    // Permissions are handled by authorize middleware - only Admin and HR Officer can update
 
     const {
       firstName, lastName, phoneNumber, dateOfBirth, gender, address,

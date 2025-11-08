@@ -18,7 +18,10 @@ const calculatePayroll = async (employeeId, month, year) => {
   }
 
   const { salary, basic_salary } = employeeResult.rows[0];
-  const basicSalary = basic_salary || salary * 0.8;
+  // Convert to numbers to ensure proper calculations
+  const salaryNum = parseFloat(salary) || 0;
+  const basicSalaryNum = parseFloat(basic_salary) || 0;
+  const basicSalary = basicSalaryNum || salaryNum * 0.8;
 
   // Get payroll settings
   const settingsResult = await pool.query('SELECT * FROM payroll_settings LIMIT 1');
@@ -28,23 +31,28 @@ const calculatePayroll = async (employeeId, month, year) => {
     hra_percentage: 40
   };
 
+  // Convert settings to numbers
+  const hraPercentage = parseFloat(settings.hra_percentage) || 40;
+  const pfPercentage = parseFloat(settings.pf_percentage) || 12;
+  const professionalTaxAmount = parseFloat(settings.professional_tax_amount) || 200;
+
   // Calculate allowances
-  const hra = basicSalary * (settings.hra_percentage / 100);
+  const hra = parseFloat((basicSalary * (hraPercentage / 100)).toFixed(2));
   const conveyance = 1600; // Fixed
   const medicalAllowance = 1250; // Fixed
-  const otherAllowances = salary - basicSalary - hra - conveyance - medicalAllowance;
+  const otherAllowances = parseFloat((salaryNum - basicSalary - hra - conveyance - medicalAllowance).toFixed(2));
 
   // Calculate deductions
-  const pf = basicSalary * (settings.pf_percentage / 100);
-  const professionalTax = settings.professional_tax_amount;
+  const pf = parseFloat((basicSalary * (pfPercentage / 100)).toFixed(2));
+  const professionalTax = professionalTaxAmount;
   const incomeTax = 0; // Can be calculated based on tax brackets if needed
   const loanDeduction = 0; // Can be stored per employee if needed
   const otherDeductions = 0;
-  const totalDeductions = pf + professionalTax + incomeTax + loanDeduction + otherDeductions;
+  const totalDeductions = parseFloat((pf + professionalTax + incomeTax + loanDeduction + otherDeductions).toFixed(2));
 
   // Calculate gross and net
-  const grossSalary = basicSalary + hra + conveyance + medicalAllowance + otherAllowances;
-  const netSalary = grossSalary - totalDeductions;
+  const grossSalary = parseFloat((basicSalary + hra + conveyance + medicalAllowance + otherAllowances).toFixed(2));
+  const netSalary = parseFloat((grossSalary - totalDeductions).toFixed(2));
 
   // Get attendance for the month
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
@@ -66,7 +74,7 @@ const calculatePayroll = async (employeeId, month, year) => {
   // For now, we'll use full salary, but you can adjust based on business logic
   const workingDays = 30; // Assuming 30 days in a month
   const actualWorkingDays = parseInt(present_days) + parseInt(leave_days);
-  const adjustedNetSalary = (netSalary / workingDays) * actualWorkingDays;
+  const adjustedNetSalary = parseFloat(((netSalary / workingDays) * actualWorkingDays).toFixed(2));
 
   return {
     basicSalary,
@@ -162,7 +170,7 @@ router.post('/generate', authenticate, authorize('Admin', 'Payroll Officer'), [
     // Calculate payroll
     const payrollData = await calculatePayroll(employeeId, month, year);
 
-    // Insert payroll
+    // Insert payroll - ensure all values are numbers
     const result = await pool.query(
       `INSERT INTO payroll (
         employee_id, month, year, gross_salary, basic_salary,
@@ -171,10 +179,22 @@ router.post('/generate', authenticate, authorize('Admin', 'Payroll Officer'), [
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'Processed')
       RETURNING *`,
       [
-        employeeId, month, year, payrollData.grossSalary, payrollData.basicSalary,
-        payrollData.hra, payrollData.conveyance, payrollData.medicalAllowance, payrollData.otherAllowances,
-        payrollData.pf, payrollData.professionalTax, payrollData.incomeTax, payrollData.loanDeduction,
-        payrollData.otherDeductions, payrollData.totalDeductions, payrollData.netSalary
+        parseInt(employeeId), 
+        parseInt(month), 
+        parseInt(year), 
+        parseFloat(payrollData.grossSalary), 
+        parseFloat(payrollData.basicSalary),
+        parseFloat(payrollData.hra), 
+        parseFloat(payrollData.conveyance), 
+        parseFloat(payrollData.medicalAllowance), 
+        parseFloat(payrollData.otherAllowances),
+        parseFloat(payrollData.pf), 
+        parseFloat(payrollData.professionalTax), 
+        parseFloat(payrollData.incomeTax), 
+        parseFloat(payrollData.loanDeduction),
+        parseFloat(payrollData.otherDeductions), 
+        parseFloat(payrollData.totalDeductions), 
+        parseFloat(payrollData.netSalary)
       ]
     );
 

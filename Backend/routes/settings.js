@@ -5,6 +5,20 @@ import { authenticate, authorize } from '../middleware/auth.js';
 
 const router = express.Router();
 
+// Get company logo (for all authenticated users - used in navbar)
+router.get('/company/logo', authenticate, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT logo_url, company_name FROM company_info LIMIT 1');
+    res.json({
+      logo_url: result.rows[0]?.logo_url || null,
+      company_name: result.rows[0]?.company_name || 'WorkZen'
+    });
+  } catch (error) {
+    console.error('Get company logo error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Get company info
 router.get('/company', authenticate, authorize('Admin'), async (req, res) => {
   try {
@@ -73,7 +87,7 @@ router.get('/leave-types', authenticate, authorize('Admin'), async (req, res) =>
   }
 });
 
-// Add leave type
+// Add leave type (Only allowed types: Paid time Off, Sick time off, Unpaid Leaves)
 router.post('/leave-types', authenticate, authorize('Admin'), [
   body('name').notEmpty(),
   body('maxDays').optional().isInt({ min: 0 }),
@@ -87,24 +101,31 @@ router.post('/leave-types', authenticate, authorize('Admin'), [
 
     const { name, maxDays = 0, description } = req.body;
 
+    // Only allow the 3 required leave types from wireframe
+    const allowedLeaveTypes = ['Paid time Off', 'Sick time off', 'Unpaid Leaves'];
+    if (!allowedLeaveTypes.includes(name)) {
+      return res.status(400).json({ 
+        error: `Only these leave types are allowed: ${allowedLeaveTypes.join(', ')}` 
+      });
+    }
+
     const result = await pool.query(
       `INSERT INTO leave_types (name, max_days, description)
        VALUES ($1, $2, $3)
+       ON CONFLICT (name) DO UPDATE 
+       SET max_days = EXCLUDED.max_days, description = EXCLUDED.description
        RETURNING *`,
       [name, maxDays, description]
     );
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    if (error.code === '23505') { // Unique violation
-      return res.status(400).json({ error: 'Leave type already exists' });
-    }
     console.error('Add leave type error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// Update leave type
+// Update leave type (Prevent name change for required leave types)
 router.put('/leave-types/:id', authenticate, authorize('Admin'), [
   body('name').optional().notEmpty(),
   body('maxDays').optional().isInt({ min: 0 }),
@@ -118,6 +139,31 @@ router.put('/leave-types/:id', authenticate, authorize('Admin'), [
 
     const { id } = req.params;
     const { name, maxDays, description } = req.body;
+
+    // Check if it's a required leave type
+    const leaveTypeResult = await pool.query('SELECT name FROM leave_types WHERE id = $1', [id]);
+    
+    if (leaveTypeResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Leave type not found' });
+    }
+
+    const currentName = leaveTypeResult.rows[0].name;
+    const requiredLeaveTypes = ['Paid time Off', 'Sick time off', 'Unpaid Leaves'];
+    const isRequired = requiredLeaveTypes.includes(currentName);
+
+    // Prevent name change for required leave types
+    if (name && name !== currentName && isRequired) {
+      return res.status(400).json({ 
+        error: 'Cannot change name of required leave types' 
+      });
+    }
+
+    // If changing name, ensure it's one of the allowed types
+    if (name && !requiredLeaveTypes.includes(name)) {
+      return res.status(400).json({ 
+        error: `Only these leave types are allowed: ${requiredLeaveTypes.join(', ')}` 
+      });
+    }
 
     const updateFields = [];
     const values = [];
@@ -147,10 +193,6 @@ router.put('/leave-types/:id', authenticate, authorize('Admin'), [
       values
     );
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Leave type not found' });
-    }
-
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Update leave type error:', error);
@@ -158,16 +200,28 @@ router.put('/leave-types/:id', authenticate, authorize('Admin'), [
   }
 });
 
-// Delete leave type
+// Delete leave type (Prevent deletion of required leave types)
 router.delete('/leave-types/:id', authenticate, authorize('Admin'), async (req, res) => {
   try {
     const { id } = req.params;
 
-    const result = await pool.query('DELETE FROM leave_types WHERE id = $1 RETURNING id', [id]);
-
-    if (result.rows.length === 0) {
+    // Check if it's a required leave type
+    const leaveTypeResult = await pool.query('SELECT name FROM leave_types WHERE id = $1', [id]);
+    
+    if (leaveTypeResult.rows.length === 0) {
       return res.status(404).json({ error: 'Leave type not found' });
     }
+
+    const leaveTypeName = leaveTypeResult.rows[0].name;
+    const requiredLeaveTypes = ['Paid time Off', 'Sick time off', 'Unpaid Leaves'];
+    
+    if (requiredLeaveTypes.includes(leaveTypeName)) {
+      return res.status(400).json({ 
+        error: 'Cannot delete required leave types. Only custom leave types can be deleted.' 
+      });
+    }
+
+    const result = await pool.query('DELETE FROM leave_types WHERE id = $1 RETURNING id', [id]);
 
     res.json({ message: 'Leave type deleted successfully' });
   } catch (error) {

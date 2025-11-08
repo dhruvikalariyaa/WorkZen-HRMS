@@ -156,7 +156,7 @@ router.post('/create-user', authenticate, authorize('Admin', 'HR Officer'), [
   body('email').isEmail(),
   body('phone').optional(),
   body('hireDate').optional(),
-  body('role').isIn(['Admin', 'HR Officer', 'Manager', 'Employee']),
+  body('role').isIn(['Admin', 'HR Officer', 'Payroll Officer', 'Manager', 'Employee']),
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -364,6 +364,77 @@ router.get('/me', authenticate, async (req, res) => {
     });
   } catch (error) {
     console.error('Get me error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get all users with employee info (Admin only)
+router.get('/users', authenticate, authorize('Admin'), async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT 
+        u.id,
+        u.login_id,
+        u.email,
+        u.role,
+        u.created_at,
+        e.first_name,
+        e.last_name,
+        e.employee_id
+       FROM users u
+       LEFT JOIN employees e ON u.id = e.user_id
+       ORDER BY u.created_at DESC`
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Get users error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Update user role (Admin only)
+router.put('/users/:userId/role', authenticate, authorize('Admin'), [
+  body('role').isIn(['Admin', 'HR Officer', 'Payroll Officer', 'Manager', 'Employee']),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { userId } = req.params;
+    const { role } = req.body;
+
+    // Prevent changing own role
+    if (parseInt(userId) === req.user.id) {
+      return res.status(400).json({ error: 'You cannot change your own role' });
+    }
+
+    // Check if user exists
+    const userResult = await pool.query(
+      'SELECT id, role FROM users WHERE id = $1',
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Update role
+    const result = await pool.query(
+      `UPDATE users 
+       SET role = $1, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2
+       RETURNING id, login_id, email, role`,
+      [role, userId]
+    );
+
+    res.json({
+      message: 'User role updated successfully',
+      user: result.rows[0]
+    });
+  } catch (error) {
+    console.error('Update user role error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
