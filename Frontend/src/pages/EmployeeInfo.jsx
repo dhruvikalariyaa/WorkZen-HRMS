@@ -24,8 +24,10 @@ const EmployeeInfo = () => {
     position: '',
     hireDate: '',
     salary: '',
-    role: 'Employee'
+    role: 'Employee',
+    managerId: ''
   });
+  const [employees, setEmployees] = useState([]);
   const [profileImage, setProfileImage] = useState(null);
   const [profileImageUrl, setProfileImageUrl] = useState(null);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -96,7 +98,18 @@ const EmployeeInfo = () => {
       // Get current user's employee info
       fetchCurrentEmployee();
     }
+    // Fetch employees list for manager dropdown
+    fetchEmployees();
   }, [employeeId]);
+
+  const fetchEmployees = async () => {
+    try {
+      const response = await api.get('/employees');
+      setEmployees(response.data);
+    } catch (error) {
+      console.error('Failed to fetch employees:', error);
+    }
+  };
 
   const fetchEmployee = async () => {
     try {
@@ -116,7 +129,8 @@ const EmployeeInfo = () => {
         position: emp.position || '',
         hireDate: emp.hire_date || '',
         salary: emp.salary || '',
-        role: emp.role || 'Employee'
+        role: emp.role || 'Employee',
+        managerId: emp.manager_id || ''
       });
       setProfileImageUrl(emp.profile_image_url || null);
       setUserRole(emp.role || 'Employee');
@@ -272,7 +286,8 @@ const EmployeeInfo = () => {
           department: formData.department,
           position: formData.position,
           hireDate: formData.hireDate,
-          salary: formData.salary
+          salary: formData.salary,
+          managerId: formData.managerId || null
         });
         
         // Update role if changed and user is Admin
@@ -333,6 +348,9 @@ const EmployeeInfo = () => {
         }
         if (formData.role) {
           requestBody.role = formData.role;
+        }
+        if (formData.managerId) {
+          requestBody.managerId = formData.managerId;
         }
         
         const response = await api.post('/employees', requestBody);
@@ -830,6 +848,46 @@ const EmployeeInfo = () => {
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Salary</label>
+                  <input
+                    type="number"
+                    name="salary"
+                    value={formData.salary}
+                    onChange={handleChange}
+                    placeholder="Enter monthly salary"
+                    min="0"
+                    step="0.01"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Monthly salary amount</p>
+                </div>
+
+                {/* Manager field */}
+                {canEditAll && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Manager</label>
+                    <select
+                      name="managerId"
+                      value={formData.managerId || ''}
+                      onChange={handleChange}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select Manager</option>
+                      {employees
+                        .filter(emp => !employeeId || emp.id !== parseInt(employeeId)) // Exclude current employee
+                        .map((emp) => (
+                          <option key={emp.id} value={emp.id}>
+                            {emp.employee_id} - {emp.first_name} {emp.last_name}
+                          </option>
+                        ))}
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Select the manager for this employee
+                    </p>
+                  </div>
+                )}
 
                 {/* Role field - show when creating new employee or when Admin editing existing employee */}
                 {((!employeeId && canEditAll) || (employeeId && user?.role === 'Admin')) && (

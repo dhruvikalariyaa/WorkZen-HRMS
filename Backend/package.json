@@ -8,7 +8,8 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "cleanup-leave-types": "node scripts/cleanupLeaveTypes.js",
-    "fix-attendance-dates": "node scripts/fixAttendanceDates.js"
+    "fix-attendance-dates": "node scripts/fixAttendanceDates.js",
+    "add-test-data": "node scripts/addTestData.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

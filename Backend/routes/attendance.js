@@ -8,6 +8,33 @@ import { PAYROLL_CONSTANTS, ATTENDANCE_STATUS } from '../utils/constants.js';
 
 const router = express.Router();
 
+// Helper function to calculate total days in a month (30 or 31)
+const getTotalDaysInMonth = (year, month) => {
+  const endDate = new Date(year, month, 0);
+  return endDate.getDate(); // Returns 28, 29, 30, or 31 depending on the month
+};
+
+// Helper function to calculate working days in a month
+// First get total days (30 or 31), then exclude weekends (Saturday and Sunday)
+const calculateWorkingDaysInMonth = (year, month) => {
+  // Step 1: Get total days in month (30 or 31)
+  const totalDaysInMonth = getTotalDaysInMonth(year, month);
+  
+  // Step 2: Calculate working days by excluding weekends
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0);
+  let workingDays = 0;
+  
+  for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+    const dayOfWeek = d.getDay();
+    if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Exclude Sunday (0) and Saturday (6)
+      workingDays++;
+    }
+  }
+  
+  return workingDays;
+};
+
 // Get today's check-in status for employee (must be before / route)
 router.get('/today-status', authenticate, authorize('Employee', 'HR Officer', 'Payroll Officer'), async (req, res) => {
   try {
@@ -98,9 +125,9 @@ router.get('/summary', authenticate, authorize('Employee', 'HR Officer', 'Payrol
       [employeeId, startDate, endDate]
     );
 
-    // Get approved leaves for the month
+    // Get approved leaves for the month and calculate actual leave DAYS (not leave records)
     const leavesResult = await pool.query(
-      `SELECT COUNT(*) as count FROM leaves 
+      `SELECT leave_type, start_date, end_date FROM leaves 
        WHERE employee_id = $1 
        AND status = 'Approved' 
        AND start_date <= $3 
@@ -108,17 +135,98 @@ router.get('/summary', authenticate, authorize('Employee', 'HR Officer', 'Payrol
       [employeeId, startDate, endDate]
     );
 
-    const presentCount = attendanceResult.rows.filter(r => r.status === 'Present').length;
-    const leaveCount = parseInt(leavesResult.rows[0].count);
+    // Count present days (excluding weekends) - same logic as payroll
+    let presentCount = 0;
+    attendanceResult.rows.forEach(record => {
+      if (record.status === 'Present') {
+        const date = new Date(record.date);
+        const dayOfWeek = date.getDay();
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Only count weekdays (exclude Sunday and Saturday)
+          presentCount++;
+        }
+      }
+    });
     
-    // Calculate total working days (excluding weekends - simplified)
+    // Calculate actual leave DAYS (excluding weekends)
+    // Use Set to avoid double-counting overlapping leave dates
+    const leaveDatesSet = new Set();
+    const dateRangeStart = new Date(startDate);
+    const dateRangeEnd = new Date(endDate);
+    
+    leavesResult.rows.forEach(leave => {
+      // Parse dates - handle both Date objects and strings
+      // Convert to YYYY-MM-DD format first to avoid timezone issues
+      const leaveStartStr = leave.start_date instanceof Date 
+        ? leave.start_date.toISOString().split('T')[0]
+        : leave.start_date.split('T')[0];
+      const leaveEndStr = leave.end_date instanceof Date
+        ? leave.end_date.toISOString().split('T')[0]
+        : leave.end_date.split('T')[0];
+      
+      const leaveStart = new Date(leaveStartStr + 'T00:00:00');
+      const leaveEnd = new Date(leaveEndStr + 'T00:00:00');
+      
+      // Normalize date range boundaries - use local time to avoid timezone issues
+      const rangeStartStr = startDate.split('T')[0];
+      const rangeEndStr = endDate.split('T')[0];
+      const rangeStart = new Date(rangeStartStr + 'T00:00:00');
+      const rangeEnd = new Date(rangeEndStr + 'T00:00:00');
+      
+      // Count only weekdays within the date range
+      // Use >= and <= to include boundary dates
+      const actualStart = leaveStart >= rangeStart ? leaveStart : rangeStart;
+      const actualEnd = leaveEnd <= rangeEnd ? leaveEnd : rangeEnd;
+      
+      // Only process if there's an overlap
+      if (actualStart <= actualEnd) {
+        for (let d = new Date(actualStart); d <= actualEnd; d.setDate(d.getDate() + 1)) {
+          const dayOfWeek = d.getDay();
+          if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Exclude Sunday (0) and Saturday (6)
+            // Use date string as key to avoid duplicates
+            const dateStr = d.toISOString().split('T')[0];
+            leaveDatesSet.add(dateStr);
+          }
+        }
+      }
+    });
+    
+    const leaveCount = leaveDatesSet.size;
+    
+    // Debug logging (can be removed in production)
+    console.log('Leave calculation debug:', {
+      employeeId,
+      startDate,
+      endDate,
+      leavesFound: leavesResult.rows.length,
+      leaveRecords: leavesResult.rows.map(l => ({
+        start: l.start_date,
+        end: l.end_date,
+        type: l.leave_type
+      })),
+      uniqueLeaveDays: Array.from(leaveDatesSet).sort(),
+      leaveCount
+    });
+    
+    // Calculate total working days using the same logic as payroll
+    // First get total days in month (30 or 31), then exclude weekends
     const start = new Date(startDate);
     const end = new Date(endDate);
+    const startYear = start.getFullYear();
+    const startMonth = start.getMonth() + 1; // getMonth() returns 0-11, so add 1
+    const endYear = end.getFullYear();
+    const endMonth = end.getMonth() + 1;
+    
+    // If start and end are in the same month, use that month's working days
     let totalWorkingDays = 0;
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-      const dayOfWeek = d.getDay();
-      if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Exclude Sunday (0) and Saturday (6)
-        totalWorkingDays++;
+    if (startYear === endYear && startMonth === endMonth) {
+      totalWorkingDays = calculateWorkingDaysInMonth(startYear, startMonth);
+    } else {
+      // If date range spans multiple months, calculate for each month
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const dayOfWeek = d.getDay();
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Exclude Sunday (0) and Saturday (6)
+          totalWorkingDays++;
+        }
       }
     }
 
