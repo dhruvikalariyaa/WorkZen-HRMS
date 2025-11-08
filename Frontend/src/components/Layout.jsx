@@ -1,21 +1,62 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import api from '../utils/api';
 
 const Layout = ({ children }) => {
   const { user, logout, hasRole } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [companyLogo, setCompanyLogo] = useState(null);
 
   const menuItems = [
     { path: '/dashboard', label: 'Home', icon: '🏠', roles: ['Admin', 'HR Officer', 'Manager', 'Employee'] },
-    { path: '/employees', label: 'Employees', icon: '👥', roles: ['Admin', 'HR Officer', 'Manager'] },
-    { path: '/attendance', label: 'Attendance', icon: '📅', roles: ['Admin', 'HR Officer', 'Manager', 'Employee'] },
-    { path: '/leaves', label: 'Leave', icon: '📄', roles: ['Admin', 'HR Officer', 'Manager', 'Employee'] },
-    { path: '/reports', label: 'Report', icon: '📊', roles: ['Admin', 'HR Officer', 'Manager', 'Employee'] },
+    { path: '/employees', label: 'Employees', icon: '👥', roles: ['Admin', 'HR Officer', 'Manager', 'Employee'] },
+    { path: '/attendance', label: 'Attendance', icon: '📅', roles: ['Admin', 'HR Officer', 'Payroll Officer', 'Manager', 'Employee'] },
+    { path: '/leaves', label: 'Time Off', icon: '📄', roles: ['Admin', 'HR Officer', 'Payroll Officer', 'Manager', 'Employee'] },
+    { path: '/payroll', label: 'Payroll', icon: '💰', roles: ['Admin', 'Payroll Officer'] },
+    { path: '/reports', label: 'Reports', icon: '📊', roles: ['Admin', 'HR Officer', 'Payroll Officer'] },
     { path: '/settings', label: 'Settings', icon: '⚙️', roles: ['Admin'] },
   ].filter(item => hasRole(item.roles));
+
+  useEffect(() => {
+    fetchCompanyLogo();
+    
+    // Listen for logo update events
+    const handleLogoUpdate = () => {
+      fetchCompanyLogo();
+    };
+    
+    window.addEventListener('logoUpdated', handleLogoUpdate);
+    
+    return () => {
+      window.removeEventListener('logoUpdated', handleLogoUpdate);
+    };
+  }, []);
+
+  const fetchCompanyLogo = async () => {
+    try {
+      console.log('Fetching company logo...');
+      const response = await api.get('/settings/company/logo');
+      console.log('Company logo response:', response.data);
+      console.log('Logo URL:', response.data?.logo_url);
+      
+      if (response.data?.logo_url && response.data.logo_url.trim() !== '') {
+        console.log('Setting company logo:', response.data.logo_url);
+        setCompanyLogo(response.data.logo_url);
+      } else {
+        console.log('No logo URL found in response or logo_url is empty');
+        setCompanyLogo(null);
+      }
+    } catch (error) {
+      console.error('Failed to fetch company logo:', error);
+      console.error('Error status:', error.response?.status);
+      console.error('Error details:', error.response?.data);
+      console.error('Error message:', error.message);
+      setCompanyLogo(null);
+    }
+  };
 
   const handleLogout = () => {
     logout();
@@ -26,9 +67,29 @@ const Layout = ({ children }) => {
     <div className="flex h-screen bg-gray-100">
       {/* Sidebar */}
       <aside className="w-64 bg-white shadow-lg">
-        <div className="p-6">
-          <h1 className="text-2xl font-bold text-purple-600">WorkZen</h1>
-          <p className="text-sm text-gray-500 mt-1">HRMS</p>
+        <div className="p-6 border-b border-gray-200">
+          {companyLogo && companyLogo.trim() !== '' ? (
+            <div className="flex items-center justify-center">
+              <img 
+                src={companyLogo} 
+                alt="Company Logo" 
+                className="h-28 w-auto object-contain max-w-[260px]"
+                onError={(e) => {
+                  console.error('Failed to load logo image:', companyLogo);
+                  console.error('Image error details:', e);
+                  setCompanyLogo(null);
+                }}
+                onLoad={() => {
+                  console.log('Logo image loaded successfully:', companyLogo);
+                }}
+              />
+            </div>
+          ) : (
+            <div className="text-center">
+              <h1 className="text-2xl font-bold text-purple-600">WorkZen</h1>
+              <p className="text-sm text-gray-500 mt-1">HRMS</p>
+            </div>
+          )}
         </div>
         <nav className="mt-6">
           {menuItems.map((item) => (

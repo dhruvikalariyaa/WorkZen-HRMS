@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 
@@ -7,6 +7,8 @@ const Reports = () => {
   const [reportType, setReportType] = useState('');
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [employees, setEmployees] = useState([]);
+  const [salaryStatementData, setSalaryStatementData] = useState(null);
   const [filters, setFilters] = useState({
     startDate: '',
     endDate: '',
@@ -18,11 +20,13 @@ const Reports = () => {
 
   // Different report types based on role
   const isEmployee = user?.role === 'Employee';
+  const isAdminOrPayroll = ['Admin', 'Payroll Officer'].includes(user?.role);
   
   const adminReportTypes = [
     { id: 'attendance', name: 'Attendance Report' },
     { id: 'leave', name: 'Leave Report' },
     { id: 'salary', name: 'Salary Report' },
+    { id: 'salary-statement', name: 'Salary Statement Report' },
     { id: 'employee', name: 'Employee Report' }
   ];
 
@@ -34,10 +38,32 @@ const Reports = () => {
 
   const reportTypes = isEmployee ? employeeReportTypes : adminReportTypes;
 
+  useEffect(() => {
+    if (isAdminOrPayroll && reportType === 'salary-statement') {
+      fetchEmployees();
+    }
+  }, [reportType, isAdminOrPayroll]);
+
+  const fetchEmployees = async () => {
+    try {
+      const response = await api.get('/employees');
+      setEmployees(response.data);
+    } catch (error) {
+      console.error('Failed to fetch employees:', error);
+    }
+  };
+
   const handleGenerateReport = async () => {
     if (!reportType) {
       alert('Please select a report type');
       return;
+    }
+
+    if (reportType === 'salary-statement') {
+      if (!filters.employeeId || !filters.year) {
+        alert('Please select an employee and year');
+        return;
+      }
     }
 
     setLoading(true);
@@ -57,19 +83,104 @@ const Reports = () => {
         if (filters.month) params.month = filters.month;
         if (filters.year) params.year = filters.year;
         if (!isEmployee && filters.employeeId) params.employeeId = filters.employeeId;
+      } else if (reportType === 'salary-statement') {
+        params.employeeId = filters.employeeId;
+        params.year = filters.year;
       }
 
       let endpoint = reportType === 'salary' ? 'payroll' : reportType;
       if (reportType === 'employee') {
         endpoint = 'employee';
       }
-      const response = await api.get(`/reports/${endpoint}`, { params });
-      setReportData(response.data);
+      
+      if (reportType === 'salary-statement') {
+        const response = await api.get(`/reports/salary-statement`, { params });
+        setSalaryStatementData(response.data);
+        setReportData(null);
+      } else {
+        const response = await api.get(`/reports/${endpoint}`, { params });
+        setReportData(response.data);
+        setSalaryStatementData(null);
+      }
     } catch (error) {
       console.error('Failed to generate report:', error);
-      alert('Failed to generate report');
+      alert(error.response?.data?.error || 'Failed to generate report');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleExportPDF = async () => {
+    if (!filters.employeeId || !filters.year) {
+      alert('Please select an employee and year');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/reports/salary-statement/pdf?employeeId=${filters.employeeId}&year=${filters.year}`,
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to export PDF');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Salary_Statement_${filters.year}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Failed to export PDF:', error);
+      alert('Failed to export PDF');
+    }
+  };
+
+  const handleExportExcel = async () => {
+    if (!filters.employeeId || !filters.year) {
+      alert('Please select an employee and year');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/reports/salary-statement/excel?employeeId=${filters.employeeId}&year=${filters.year}`,
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to export Excel');
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Salary_Statement_${filters.year}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Failed to export Excel:', error);
+      alert('Failed to export Excel');
     }
   };
 
@@ -99,6 +210,38 @@ const Reports = () => {
           <div className="border-t pt-4">
             <h3 className="font-semibold mb-4">Filters</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {reportType === 'salary-statement' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Employee Name</label>
+                    <select
+                      value={filters.employeeId}
+                      onChange={(e) => setFilters({ ...filters, employeeId: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                      required
+                    >
+                      <option value="">Select Employee</option>
+                      {employees.map((emp) => (
+                        <option key={emp.id} value={emp.id}>
+                          {emp.first_name} {emp.last_name} ({emp.employee_id})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Year</label>
+                    <input
+                      type="number"
+                      value={filters.year}
+                      onChange={(e) => setFilters({ ...filters, year: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                      min="2000"
+                      max={new Date().getFullYear() + 1}
+                      required
+                    />
+                  </div>
+                </>
+              )}
               {(reportType === 'attendance' || reportType === 'leave') && (
                 <>
                   <div>
@@ -163,16 +306,160 @@ const Reports = () => {
                 </div>
               )}
             </div>
-            <button
-              onClick={handleGenerateReport}
-              disabled={loading}
-              className="mt-4 bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50"
-            >
-              {loading ? 'Generating...' : 'Generate Report'}
-            </button>
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={handleGenerateReport}
+                disabled={loading}
+                className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50"
+              >
+                {loading ? 'Generating...' : reportType === 'salary-statement' ? 'View Report' : 'Generate Report'}
+              </button>
+              {reportType === 'salary-statement' && salaryStatementData && (
+                <>
+                  <button
+                    onClick={handleExportPDF}
+                    className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700"
+                  >
+                    Export PDF
+                  </button>
+                  <button
+                    onClick={handleExportExcel}
+                    className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700"
+                  >
+                    Export Excel
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>
+
+      {salaryStatementData && (
+        <div className="bg-white rounded-lg shadow-md p-8">
+          <div className="text-center mb-6">
+            <h2 className="text-2xl font-bold text-blue-600 mb-2">Salary Statement Report</h2>
+            <h3 className="text-xl font-semibold">{salaryStatementData.company.name}</h3>
+            {salaryStatementData.company.address && (
+              <p className="text-gray-600">{salaryStatementData.company.address}</p>
+            )}
+            <hr className="my-4" />
+          </div>
+
+          <div className="mb-6">
+            <h3 className="text-lg font-semibold mb-4">Employee Information</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <span className="font-medium">Employee Name:</span> {salaryStatementData.employee.name}
+              </div>
+              <div>
+                <span className="font-medium">Designation:</span> {salaryStatementData.employee.designation || 'N/A'}
+              </div>
+              <div>
+                <span className="font-medium">Date Of Joining:</span> {salaryStatementData.employee.dateOfJoining || 'N/A'}
+              </div>
+              <div>
+                <span className="font-medium">Salary Effective From:</span> {salaryStatementData.employee.salaryEffectiveFrom || 'N/A'}
+              </div>
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <table className="w-full border-collapse border border-gray-300">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="border border-gray-300 px-4 py-3 text-left font-semibold">Salary Components</th>
+                  <th className="border border-gray-300 px-4 py-3 text-center font-semibold">Monthly Amount</th>
+                  <th className="border border-gray-300 px-4 py-3 text-center font-semibold">Yearly Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td colSpan="3" className="border border-gray-300 px-4 py-2 font-semibold text-red-600">Earnings</td>
+                </tr>
+                {salaryStatementData.monthly.basic_salary > 0 && (
+                  <tr>
+                    <td className="border border-gray-300 px-4 py-2">Basic</td>
+                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.monthly.basic_salary.toFixed(2)}</td>
+                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.yearly.basic_salary.toFixed(2)}</td>
+                  </tr>
+                )}
+                {salaryStatementData.monthly.hra > 0 && (
+                  <tr>
+                    <td className="border border-gray-300 px-4 py-2">HRA</td>
+                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.monthly.hra.toFixed(2)}</td>
+                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.yearly.hra.toFixed(2)}</td>
+                  </tr>
+                )}
+                {salaryStatementData.monthly.conveyance > 0 && (
+                  <tr>
+                    <td className="border border-gray-300 px-4 py-2">Conveyance</td>
+                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.monthly.conveyance.toFixed(2)}</td>
+                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.yearly.conveyance.toFixed(2)}</td>
+                  </tr>
+                )}
+                {salaryStatementData.monthly.medical_allowance > 0 && (
+                  <tr>
+                    <td className="border border-gray-300 px-4 py-2">Medical Allowance</td>
+                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.monthly.medical_allowance.toFixed(2)}</td>
+                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.yearly.medical_allowance.toFixed(2)}</td>
+                  </tr>
+                )}
+                {salaryStatementData.monthly.other_allowances > 0 && (
+                  <tr>
+                    <td className="border border-gray-300 px-4 py-2">Other Allowances</td>
+                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.monthly.other_allowances.toFixed(2)}</td>
+                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.yearly.other_allowances.toFixed(2)}</td>
+                  </tr>
+                )}
+                <tr>
+                  <td colSpan="3" className="border border-gray-300 px-4 py-2 font-semibold text-red-600">Deduction</td>
+                </tr>
+                {salaryStatementData.monthly.pf > 0 && (
+                  <tr>
+                    <td className="border border-gray-300 px-4 py-2">PF</td>
+                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.monthly.pf.toFixed(2)}</td>
+                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.yearly.pf.toFixed(2)}</td>
+                  </tr>
+                )}
+                {salaryStatementData.monthly.professional_tax > 0 && (
+                  <tr>
+                    <td className="border border-gray-300 px-4 py-2">Professional Tax</td>
+                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.monthly.professional_tax.toFixed(2)}</td>
+                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.yearly.professional_tax.toFixed(2)}</td>
+                  </tr>
+                )}
+                {salaryStatementData.monthly.income_tax > 0 && (
+                  <tr>
+                    <td className="border border-gray-300 px-4 py-2">Income Tax</td>
+                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.monthly.income_tax.toFixed(2)}</td>
+                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.yearly.income_tax.toFixed(2)}</td>
+                  </tr>
+                )}
+                {salaryStatementData.monthly.loan_deduction > 0 && (
+                  <tr>
+                    <td className="border border-gray-300 px-4 py-2">Loan Deduction</td>
+                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.monthly.loan_deduction.toFixed(2)}</td>
+                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.yearly.loan_deduction.toFixed(2)}</td>
+                  </tr>
+                )}
+                {salaryStatementData.monthly.other_deductions > 0 && (
+                  <tr>
+                    <td className="border border-gray-300 px-4 py-2">Other Deductions</td>
+                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.monthly.other_deductions.toFixed(2)}</td>
+                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.yearly.other_deductions.toFixed(2)}</td>
+                  </tr>
+                )}
+                <tr className="bg-gray-50 font-bold">
+                  <td className="border border-gray-300 px-4 py-3">Net Salary</td>
+                  <td className="border border-gray-300 px-4 py-3 text-right">₹{salaryStatementData.monthly.net_salary.toFixed(2)}</td>
+                  <td className="border border-gray-300 px-4 py-3 text-right">₹{salaryStatementData.yearly.net_salary.toFixed(2)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {reportData && (
         <div className="bg-white rounded-lg shadow-md p-6">
@@ -180,19 +467,6 @@ const Reports = () => {
             <h2 className="text-lg font-semibold">
               {reportTypes.find(t => t.id === reportType)?.name}
             </h2>
-            <div className="flex space-x-2">
-              <button className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700">
-                View
-              </button>
-              <button className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700">
-                Download
-              </button>
-              {!isEmployee && (
-                <button className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700">
-                  Delete
-                </button>
-              )}
-            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">

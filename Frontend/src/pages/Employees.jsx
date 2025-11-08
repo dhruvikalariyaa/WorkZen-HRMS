@@ -76,7 +76,7 @@ const Employees = () => {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Employees</h1>
-        {user?.role !== 'Manager' && (
+        {['Admin', 'HR Officer'].includes(user?.role) && (
           <button
             onClick={() => navigate('/employee-info')}
             className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700"
@@ -162,7 +162,7 @@ const Employees = () => {
             </div>
 
             <div className="flex justify-end space-x-4 mt-6">
-              {user?.role !== 'Manager' && (
+              {['Admin', 'HR Officer'].includes(user?.role) && (
                 <button
                   onClick={() => {
                     setShowEmployeeModal(false);
@@ -253,8 +253,15 @@ const Employees = () => {
                         >
                           View
                         </button>
-                        {user?.role !== 'Manager' && (
+                        {['Admin', 'HR Officer'].includes(user?.role) && (
                           <>
+                            <button
+                              onClick={() => navigate(`/profile/${employee.id}`)}
+                              className="text-indigo-600 hover:underline"
+                              title="View Full Profile"
+                            >
+                              Profile
+                            </button>
                             <button
                               onClick={() => navigate('/employee-info', { state: { employeeId: employee.id } })}
                               className="text-blue-600 hover:underline"

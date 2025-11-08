@@ -1,4 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import Layout from './components/Layout';
@@ -51,7 +53,7 @@ function AppRoutes() {
       <Route
         path="/employees"
         element={
-          <ProtectedRoute allowedRoles={['Admin', 'HR Officer']}>
+          <ProtectedRoute allowedRoles={['Admin', 'HR Officer', 'Manager', 'Employee']}>
             <Layout>
               <Employees />
             </Layout>
@@ -84,7 +86,7 @@ function AppRoutes() {
       <Route
         path="/leaves"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['Admin', 'HR Officer', 'Payroll Officer', 'Manager', 'Employee']}>
             <Layout>
               <Leaves />
             </Layout>
@@ -117,7 +119,7 @@ function AppRoutes() {
       <Route
         path="/reports"
         element={
-          <ProtectedRoute allowedRoles={['Admin', 'Payroll Officer']}>
+          <ProtectedRoute allowedRoles={['Admin', 'HR Officer', 'Payroll Officer']}>
             <Layout>
               <Reports />
             </Layout>
@@ -137,7 +139,7 @@ function AppRoutes() {
       />
       
       <Route
-        path="/profile"
+        path="/profile/:employeeId?"
         element={
           <ProtectedRoute>
             <Layout>
@@ -157,6 +159,18 @@ function App() {
     <Router>
       <AuthProvider>
         <AppRoutes />
+        <ToastContainer
+          position="top-right"
+          autoClose={3000}
+          hideProgressBar={false}
+          newestOnTop={false}
+          closeOnClick
+          rtl={false}
+          pauseOnFocusLoss
+          draggable
+          pauseOnHover
+          theme="light"
+        />
       </AuthProvider>
     </Router>
   );
