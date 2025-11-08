@@ -1,0 +1,14 @@
+node_modules/
+.env
+*.log
+.DS_Store
+dist/
+build/
+/node_modules
+
+/dist
+/build
+/dist-ssr
+
+
+
