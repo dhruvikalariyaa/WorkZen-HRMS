@@ -11,6 +11,7 @@ const Employees = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState(null);
+  const [actionMenuOpen, setActionMenuOpen] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -70,20 +71,58 @@ const Employees = () => {
     }
   };
 
+  const handleActionClick = (e, employeeId) => {
+    e.stopPropagation();
+    setActionMenuOpen(actionMenuOpen === employeeId ? null : employeeId);
+  };
+
+  // Handle click outside to close action menu
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setActionMenuOpen(null);
+    };
+    if (actionMenuOpen) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [actionMenuOpen]);
+
+  const getStatusIndicator = (status) => {
+    switch (status) {
+      case 'present':
+        return <div className="w-3 h-3 bg-green-500 rounded-full" title="Present"></div>;
+      case 'on_leave':
+        return <span className="text-lg" title="On Leave">✈️</span>;
+      case 'absent':
+        return <div className="w-3 h-3 bg-yellow-500 rounded-full" title="Absent"></div>;
+      default:
+        return <div className="w-3 h-3 bg-gray-400 rounded-full" title="Unknown"></div>;
+    }
+  };
+
   if (loading) {
     return <div className="text-center py-12">Loading...</div>;
   }
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-6 gap-4">
         <h1 className="text-2xl font-bold text-gray-800">Employees</h1>
+        <div className="flex items-center gap-4 flex-1 justify-center">
+          <input
+            type="text"
+            placeholder="Search"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent max-w-md w-full"
+          />
+        </div>
         {['Admin', 'HR Officer'].includes(user?.role) && (
           <button
             onClick={() => navigate('/employee-info')}
-            className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700"
+            className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 whitespace-nowrap"
           >
-            Add Employee
+            NEW
           </button>
         )}
       </div>
@@ -187,112 +226,145 @@ const Employees = () => {
       )}
 
       <div className="bg-white rounded-lg shadow-md p-6">
-        <div className="mb-4">
-          <input
-            type="text"
-            placeholder="Search employees..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          />
-        </div>
+        {employees.length === 0 ? (
+          <div className="text-center py-12 text-gray-500">
+            No employees found
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            {employees.map((employee) => (
+              <div
+                key={employee.id}
+                className="bg-white border border-gray-200 rounded-lg p-4 relative hover:shadow-md transition-shadow cursor-pointer"
+                onClick={() => handleViewEmployee(employee)}
+              >
+                {/* Top Right Section - Status and Action Button */}
+                <div className="absolute top-3 right-3 flex items-center gap-2">
+                  {/* Status Indicator */}
+                  <div className="flex items-center justify-center">
+                    {getStatusIndicator(employee.attendance_status)}
+                  </div>
+                  
+                  {/* Action Button */}
+                  {['Admin', 'HR Officer'].includes(user?.role) && (
+                    <div className="relative">
+                      <button
+                        onClick={(e) => handleActionClick(e, employee.id)}
+                        className="flex items-center justify-center text-gray-600 hover:text-gray-800 text-lg"
+                        title="Actions"
+                      >
+                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                          <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+                        </svg>
+                      </button>
+                      {actionMenuOpen === employee.id && (
+                        <div className="absolute right-0 mt-2 w-36 bg-white rounded-md shadow-lg border border-gray-200 z-20 py-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActionMenuOpen(null);
+                              handleViewEmployee(employee);
+                            }}
+                            className="w-full flex items-center px-3 py-1.5 hover:bg-gray-100 text-xs text-gray-700"
+                          >
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                            View
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActionMenuOpen(null);
+                              navigate(`/profile/${employee.id}`);
+                            }}
+                            className="w-full flex items-center px-3 py-1.5 hover:bg-gray-100 text-xs text-gray-700"
+                          >
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                            </svg>
+                            Profile
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActionMenuOpen(null);
+                              navigate('/employee-info', { state: { employeeId: employee.id } });
+                            }}
+                            className="w-full flex items-center px-3 py-1.5 hover:bg-gray-100 text-xs text-gray-700"
+                          >
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                            Edit
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActionMenuOpen(null);
+                              handleSendCredentials(employee);
+                            }}
+                            className="w-full flex items-center px-3 py-1.5 hover:bg-gray-100 text-xs text-gray-700"
+                          >
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                            </svg>
+                            Send Mail
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActionMenuOpen(null);
+                              handleDelete(employee.id);
+                            }}
+                            className="w-full flex items-center px-3 py-1.5 hover:bg-red-50 text-xs text-red-600"
+                          >
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            Delete
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b">
-                <th className="text-left py-3 px-4 font-semibold text-gray-700">Employee ID</th>
-                <th className="text-left py-3 px-4 font-semibold text-gray-700">Name</th>
-                <th className="text-left py-3 px-4 font-semibold text-gray-700">Email</th>
-                <th className="text-left py-3 px-4 font-semibold text-gray-700">Department</th>
-                <th className="text-left py-3 px-4 font-semibold text-gray-700">Position</th>
-                <th className="text-left py-3 px-4 font-semibold text-gray-700">Role</th>
-                <th className="text-left py-3 px-4 font-semibold text-gray-700">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {employees.length === 0 ? (
-                <tr>
-                  <td colSpan="7" className="text-center py-8 text-gray-500">
-                    No employees found
-                  </td>
-                </tr>
-              ) : (
-                employees.map((employee) => (
-                  <tr key={employee.id} className="border-b hover:bg-gray-50">
-                    <td className="py-3 px-4">{employee.employee_id}</td>
-                    <td className="py-3 px-4">
-                      <div className="flex items-center space-x-3">
-                        {employee.profile_image_url ? (
-                          <img
-                            src={employee.profile_image_url}
-                            alt={`${employee.first_name} ${employee.last_name}`}
-                            className="w-10 h-10 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
-                            <span className="text-purple-600 font-semibold">
-                              {employee.first_name?.[0] || 'E'}
-                            </span>
-                          </div>
-                        )}
-                        <span>{employee.first_name} {employee.last_name}</span>
-                      </div>
-                    </td>
-                    <td className="py-3 px-4">{employee.email}</td>
-                    <td className="py-3 px-4">{employee.department || '-'}</td>
-                    <td className="py-3 px-4">{employee.position || '-'}</td>
-                    <td className="py-3 px-4">
-                      <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm">
-                        {employee.role}
+                {/* Profile Picture */}
+                <div className="flex justify-center mb-3">
+                  {employee.profile_image_url ? (
+                    <img
+                      src={employee.profile_image_url}
+                      alt={`${employee.first_name} ${employee.last_name}`}
+                      className="w-20 h-20 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-20 h-20 rounded-full bg-purple-100 flex items-center justify-center">
+                      <span className="text-purple-600 font-semibold text-2xl">
+                        {employee.first_name?.[0]?.toUpperCase() || 'E'}
                       </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => handleViewEmployee(employee)}
-                          className="text-purple-600 hover:underline"
-                        >
-                          View
-                        </button>
-                        {['Admin', 'HR Officer'].includes(user?.role) && (
-                          <>
-                            <button
-                              onClick={() => navigate(`/profile/${employee.id}`)}
-                              className="text-indigo-600 hover:underline"
-                              title="View Full Profile"
-                            >
-                              Profile
-                            </button>
-                            <button
-                              onClick={() => navigate('/employee-info', { state: { employeeId: employee.id } })}
-                              className="text-blue-600 hover:underline"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => handleSendCredentials(employee)}
-                              className="text-green-600 hover:underline"
-                              title="Send login credentials via email"
-                            >
-                              Send Mail
-                            </button>
-                            <button
-                              onClick={() => handleDelete(employee.id)}
-                              className="text-red-600 hover:underline"
-                            >
-                              Delete
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Name */}
+                <div className="text-center mb-1">
+                  <h3 className="font-semibold text-gray-800 text-lg">
+                    {employee.first_name} {employee.last_name}
+                  </h3>
+                </div>
+
+                {/* Role */}
+                <div className="text-center">
+                  <p className="text-sm text-gray-500">
+                    {employee.role || '-'}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

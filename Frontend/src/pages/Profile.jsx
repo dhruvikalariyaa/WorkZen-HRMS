@@ -8,7 +8,7 @@ const Profile = () => {
   const { user } = useAuth();
   const { employeeId: urlEmployeeId } = useParams();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('resume');
+  const [activeTab, setActiveTab] = useState('resume'); // Default to resume tab
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -26,7 +26,6 @@ const Profile = () => {
     company: '',
     department: '',
     manager: '',
-    location: ''
   });
 
   const [privateInfo, setPrivateInfo] = useState({
@@ -89,30 +88,33 @@ const Profile = () => {
       let targetEmployeeId = null;
       
       if (urlEmployeeId) {
-        // If URL has employeeId parameter, use that
+        // If URL has employeeId parameter, use that (viewing another employee)
         targetEmployeeId = urlEmployeeId;
+        setSelectedEmployeeId(targetEmployeeId);
+        fetchProfileData(targetEmployeeId);
+        
+        if (['Admin', 'HR Officer'].includes(user?.role)) {
+          fetchEmployees();
+        }
       } else if (user?.employee?.id) {
         // If user has their own employee record, use that
         targetEmployeeId = user.employee.id;
-      } else if (['Admin', 'HR Officer'].includes(user?.role)) {
-        // Admin/HR without employee record - will show selector
-        setLoading(false);
-        fetchEmployees();
-        return;
+        setSelectedEmployeeId(targetEmployeeId);
+        fetchProfileData(targetEmployeeId);
+        
+        if (['Admin', 'HR Officer'].includes(user?.role)) {
+          fetchEmployees();
+        }
       } else {
-        // Regular employee without employee record
+        // User doesn't have employee record - show My Profile with user info
         setLoading(false);
-        return;
-      }
-      
-      setSelectedEmployeeId(targetEmployeeId);
-      fetchProfileData(targetEmployeeId);
-      
-      if (['Admin', 'HR Officer'].includes(user?.role)) {
-        fetchEmployees();
+        setSelectedEmployeeId(null); // No employee record, but show user profile
+        if (['Admin', 'HR Officer'].includes(user?.role)) {
+          fetchEmployees();
+        }
       }
     }
-  }, [user, urlEmployeeId]);
+  }, [user, urlEmployeeId, navigate]);
 
   const fetchProfileData = async (employeeId) => {
     if (!employeeId) {
@@ -137,17 +139,38 @@ const Profile = () => {
         company: data.company_name || '',
         department: data.department || '',
         manager: data.manager_id ? `${data.manager_first_name || ''} ${data.manager_last_name || ''}`.trim() : '',
-        location: data.location || ''
       });
 
       // Set private info
+      // Format date for HTML date input (YYYY-MM-DD)
+      const formatDateForInput = (dateString) => {
+        if (!dateString) return '';
+        try {
+          // If already in YYYY-MM-DD format, return as is
+          if (typeof dateString === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+            return dateString;
+          }
+          // Parse the date string (handles various formats)
+          const date = new Date(dateString);
+          if (isNaN(date.getTime())) return '';
+          // Get date components in local timezone
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        } catch (error) {
+          console.error('Error formatting date:', dateString, error);
+          return '';
+        }
+      };
+
       setPrivateInfo({
-        dateOfBirth: data.date_of_birth || '',
+        dateOfBirth: formatDateForInput(data.date_of_birth) || '',
         mailingAddress: data.address || '',
         nationality: data.nationality || '',
         maritalStatus: data.marital_status || '',
         gender: data.gender || '',
-        dateOfJoining: data.hire_date || '',
+        dateOfJoining: formatDateForInput(data.hire_date) || '',
         bankAccountNumber: data.bank_account_number || '',
         bankName: data.bank_name || '',
         ifscCode: data.ifsc_code || '',
@@ -247,7 +270,6 @@ const Profile = () => {
         firstName: basicInfo.firstName,
         lastName: basicInfo.lastName,
         phoneNumber: basicInfo.phoneNumber,
-        location: basicInfo.location
       });
       toast.success('Basic information saved successfully');
       fetchProfileData(selectedEmployeeId);
@@ -321,6 +343,12 @@ const Profile = () => {
 
   const handleDeleteSkill = async (skillId) => {
     if (!selectedEmployeeId) return;
+    
+    if (!skillId || skillId === 'undefined' || skillId === undefined) {
+      toast.error('Invalid skill ID. Please refresh the page and try again.');
+      console.error('Skill ID is undefined:', skillId, 'Skill object:', resumeData.skills);
+      return;
+    }
 
     try {
       await api.delete(`/profile/${selectedEmployeeId}/skills/${skillId}`);
@@ -361,14 +389,14 @@ const Profile = () => {
     }
   };
 
-  const handleSalaryWageChange = (value) => {
+  const handleSalaryWageChange = (value, preserveFixedPercentage = false) => {
     const monthlyWage = parseFloat(value) || 0;
     const yearlyWage = monthlyWage * 12;
     
-    // Calculate basic salary (60% of wage)
+    // Calculate basic salary (based on percentage)
     const basicSalary = monthlyWage * (salaryInfo.basicSalaryPercentage / 100);
     
-    // Calculate HRA (10% of basic salary)
+    // Calculate HRA (based on percentage of basic salary)
     const hra = basicSalary * (salaryInfo.hraPercentage / 100);
     
     // Calculate Standard Allowance
@@ -380,10 +408,18 @@ const Profile = () => {
     // Calculate Leave Travel Allowance
     const leaveTravelAllowance = basicSalary * (salaryInfo.leaveTravelAllowancePercentage / 100);
     
-    // Calculate Fixed Allowance (remaining)
-    const totalComponents = basicSalary + hra + standardAllowance + performanceBonus + leaveTravelAllowance;
-    const fixedAllowance = monthlyWage - totalComponents;
-    const fixedAllowancePercentage = (fixedAllowance / monthlyWage) * 100;
+    // Calculate Fixed Allowance
+    let fixedAllowance, fixedAllowancePercentage;
+    if (preserveFixedPercentage && salaryInfo.fixedAllowancePercentage) {
+      // If preserving fixed percentage, calculate fixed allowance from percentage
+      fixedAllowancePercentage = parseFloat(salaryInfo.fixedAllowancePercentage);
+      fixedAllowance = monthlyWage * (fixedAllowancePercentage / 100);
+    } else {
+      // Calculate Fixed Allowance (remaining)
+      const totalComponents = basicSalary + hra + standardAllowance + performanceBonus + leaveTravelAllowance;
+      fixedAllowance = monthlyWage - totalComponents;
+      fixedAllowancePercentage = monthlyWage > 0 ? (fixedAllowance / monthlyWage) * 100 : 0;
+    }
     
     // Calculate PF
     const pfEmployee = basicSalary * (salaryInfo.pfEmployeePercentage / 100);
@@ -408,17 +444,25 @@ const Profile = () => {
   const handleSaveSalaryInfo = async () => {
     if (!selectedEmployeeId) return;
 
+    // Validate monthlyWage before sending
+    const monthlyWage = parseFloat(salaryInfo.monthlyWage);
+    if (!salaryInfo.monthlyWage || isNaN(monthlyWage) || monthlyWage < 0) {
+      toast.error('Please enter a valid monthly wage');
+      return;
+    }
+
     setSaving(true);
     try {
       await api.put(`/profile/${selectedEmployeeId}/salary`, {
         wageType: salaryInfo.wageType,
-        monthlyWage: salaryInfo.monthlyWage,
+        monthlyWage: monthlyWage,
         basicSalaryPercentage: salaryInfo.basicSalaryPercentage,
         hraPercentage: salaryInfo.hraPercentage,
-        standardAllowance: salaryInfo.standardAllowance,
+        standardAllowance: salaryInfo.standardAllowance || '',
         standardAllowancePercentage: salaryInfo.standardAllowancePercentage,
         performanceBonusPercentage: salaryInfo.performanceBonusPercentage,
         leaveTravelAllowancePercentage: salaryInfo.leaveTravelAllowancePercentage,
+        fixedAllowancePercentage: salaryInfo.fixedAllowancePercentage,
         pfEmployeePercentage: salaryInfo.pfEmployeePercentage,
         pfEmployerPercentage: salaryInfo.pfEmployerPercentage,
         professionalTax: salaryInfo.professionalTax
@@ -426,7 +470,8 @@ const Profile = () => {
       toast.success('Salary information saved successfully');
       fetchProfileData(selectedEmployeeId);
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Failed to save salary information');
+      const errorMessage = error.response?.data?.errors?.[0]?.msg || error.response?.data?.error || 'Failed to save salary information';
+      toast.error(errorMessage);
     } finally {
       setSaving(false);
     }
@@ -451,46 +496,534 @@ const Profile = () => {
     );
   }
 
-  // If Admin/HR doesn't have employee record and no employee selected, show selector
-  if (!selectedEmployeeId && canSelectEmployee && employees.length > 0) {
+  // If user doesn't have employee record, show My Profile with user information
+  if (!selectedEmployeeId && !user?.employee?.id) {
     return (
       <div>
-        <h1 className="text-2xl font-bold text-gray-800 mb-6">Employee Profile</h1>
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <div className="text-center py-12">
-            <p className="text-gray-600 mb-4">Select an employee to view their profile</p>
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold text-gray-800">My Profile</h1>
+          {canSelectEmployee && employees.length > 0 && (
             <select
-              onChange={(e) => handleEmployeeSelect(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg min-w-[300px]"
+              onChange={(e) => {
+                if (e.target.value) {
+                  handleEmployeeSelect(e.target.value);
+                }
+              }}
+              className="px-4 py-2 border border-gray-300 rounded-lg"
             >
-              <option value="">-- Select Employee --</option>
+              <option value="">-- View Other Employee --</option>
               {employees.map((emp) => (
                 <option key={emp.id} value={emp.id}>
                   {emp.employee_id} - {emp.first_name} {emp.last_name}
                 </option>
               ))}
             </select>
+          )}
+        </div>
+
+        <div className="bg-white rounded-lg shadow-md p-6">
+          {/* Profile Header */}
+          <div className="flex items-start space-x-6 mb-6 pb-6 border-b">
+            <div className="relative">
+              <div className="w-24 h-24 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center text-white text-3xl font-semibold shadow-sm">
+                {user?.employee?.first_name?.[0] || user?.loginId?.[0] || user?.email?.[0] || 'U'}
+              </div>
+            </div>
+            
+            <div className="flex-1 grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                <input
+                  type="text"
+                  value={user?.employee?.first_name ? `${user.employee.first_name} ${user.employee.last_name || ''}`.trim() : user?.loginId || 'N/A'}
+                  disabled
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Login ID</label>
+                <input
+                  type="text"
+                  value={user?.loginId || 'N/A'}
+                  disabled
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input
+                  type="email"
+                  value={user?.email || 'N/A'}
+                  disabled
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                <input
+                  type="text"
+                  value={user?.role || 'N/A'}
+                  disabled
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                />
+              </div>
+            </div>
           </div>
+
+          {/* Tabs */}
+          <div className="flex space-x-4 border-b mb-6">
+            <button
+              onClick={() => setActiveTab('resume')}
+              className={`px-4 py-2 font-medium ${
+                activeTab === 'resume'
+                  ? 'border-b-2 border-blue-600 text-blue-600'
+                  : 'text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              Resume
+            </button>
+            <button
+              onClick={() => setActiveTab('private')}
+              className={`px-4 py-2 font-medium ${
+                activeTab === 'private'
+                  ? 'border-b-2 border-blue-600 text-blue-600'
+                  : 'text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              Private Info
+            </button>
+            {canViewSalaryInfo && (
+              <button
+                onClick={() => setActiveTab('salary')}
+                className={`px-4 py-2 font-medium ${
+                  activeTab === 'salary'
+                    ? 'border-b-2 border-blue-600 text-blue-600'
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                Salary Info
+              </button>
+            )}
+            <button
+              onClick={() => setActiveTab('security')}
+              className={`px-4 py-2 font-medium ${
+                activeTab === 'security'
+                  ? 'border-b-2 border-blue-600 text-blue-600'
+                  : 'text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              Security
+            </button>
+          </div>
+
+          {/* Tab Content */}
+          {activeTab === 'resume' && (
+            <div className="grid grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">About</label>
+                  <textarea
+                    value={resumeData.about}
+                    onChange={(e) => setResumeData({ ...resumeData, about: e.target.value })}
+                    rows={4}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    placeholder="Tell us about yourself..."
+                    disabled={!user?.employee?.id}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">What I love about my job</label>
+                  <textarea
+                    value={resumeData.jobLove}
+                    onChange={(e) => setResumeData({ ...resumeData, jobLove: e.target.value })}
+                    rows={4}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    placeholder="What do you love about your job?"
+                    disabled={!user?.employee?.id}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">My Interests and hobbies</label>
+                  <textarea
+                    value={resumeData.interests}
+                    onChange={(e) => setResumeData({ ...resumeData, interests: e.target.value })}
+                    rows={4}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    placeholder="Your interests and hobbies..."
+                    disabled={!user?.employee?.id}
+                  />
+                </div>
+                {user?.employee?.id && (
+                  <button
+                    onClick={handleSaveResume}
+                    disabled={saving}
+                    className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {saving ? 'Saving...' : 'Save'}
+                  </button>
+                )}
+                {!user?.employee?.id && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <p className="text-sm text-yellow-800">
+                      <strong>Note:</strong> {
+                        ['Admin', 'HR Officer'].includes(user?.role) 
+                          ? 'You need to create your employee profile to save this information. Go to Employees page to create your profile.'
+                          : 'You need an employee profile to save this information. Contact your administrator.'
+                      }
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Skills</label>
+                  <div className="flex space-x-2 mb-2">
+                    <input
+                      type="text"
+                      value={newSkill}
+                      onChange={(e) => setNewSkill(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && user?.employee?.id && handleAddSkill()}
+                      placeholder="Add skill"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
+                      disabled={!user?.employee?.id}
+                    />
+                    <button
+                      onClick={handleAddSkill}
+                      className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                      disabled={!user?.employee?.id}
+                    >
+                      Add
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {resumeData.skills.map((skill, index) => (
+                      <div key={skill.id || index} className="flex items-center justify-between bg-gray-50 p-2 rounded">
+                        <span>{skill.skill_name || skill}</span>
+                        {user?.employee?.id && (
+                          <button
+                            onClick={() => {
+                              if (skill.id) {
+                                handleDeleteSkill(skill.id);
+                              } else {
+                                console.error('Skill ID missing:', skill);
+                                toast.error('Skill ID is missing. Please refresh the page.');
+                              }
+                            }}
+                            className="text-red-600 hover:text-red-800"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {resumeData.skills.length === 0 && (
+                      <p className="text-sm text-gray-500">No skills added yet</p>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Certification</label>
+                  <div className="space-y-2 mb-2">
+                    <input
+                      type="text"
+                      value={newCertification.certificationName}
+                      onChange={(e) => setNewCertification({ ...newCertification, certificationName: e.target.value })}
+                      placeholder="Certification Name"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      disabled={!user?.employee?.id}
+                    />
+                    <input
+                      type="text"
+                      value={newCertification.issuingOrganization}
+                      onChange={(e) => setNewCertification({ ...newCertification, issuingOrganization: e.target.value })}
+                      placeholder="Issuing Organization"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      disabled={!user?.employee?.id}
+                    />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="date"
+                        value={newCertification.issueDate}
+                        onChange={(e) => setNewCertification({ ...newCertification, issueDate: e.target.value })}
+                        placeholder="Issue Date"
+                        className="px-3 py-2 border border-gray-300 rounded-lg"
+                        disabled={!user?.employee?.id}
+                      />
+                      <input
+                        type="date"
+                        value={newCertification.expiryDate}
+                        onChange={(e) => setNewCertification({ ...newCertification, expiryDate: e.target.value })}
+                        placeholder="Expiry Date"
+                        className="px-3 py-2 border border-gray-300 rounded-lg"
+                        disabled={!user?.employee?.id}
+                      />
+                    </div>
+                    {user?.employee?.id && (
+                      <button
+                        onClick={handleAddCertification}
+                        className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                      >
+                        Add Certification
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    {resumeData.certifications.map((cert) => (
+                      <div key={cert.id} className="flex items-center justify-between bg-gray-50 p-2 rounded">
+                        <div>
+                          <span className="font-medium">{cert.certification_name}</span>
+                          {cert.issuing_organization && (
+                            <span className="text-sm text-gray-600 ml-2">- {cert.issuing_organization}</span>
+                          )}
+                        </div>
+                        {user?.employee?.id && (
+                          <button
+                            onClick={() => handleDeleteCertification(cert.id)}
+                            className="text-red-600 hover:text-red-800"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {resumeData.certifications.length === 0 && (
+                      <p className="text-sm text-gray-500">No certifications added yet</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'private' && (
+            <div className="grid grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Date of Birth</label>
+                  <input
+                    type="date"
+                    value={privateInfo.dateOfBirth}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, dateOfBirth: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    disabled={!user?.employee?.id}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Residing Address</label>
+                  <textarea
+                    value={privateInfo.mailingAddress}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, mailingAddress: e.target.value })}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    disabled={!user?.employee?.id}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Nationality</label>
+                  <input
+                    type="text"
+                    value={privateInfo.nationality}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, nationality: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    disabled={!user?.employee?.id}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Marital Status</label>
+                  <select
+                    value={privateInfo.maritalStatus}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, maritalStatus: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    disabled={!user?.employee?.id}
+                  >
+                    <option value="">Select</option>
+                    <option value="Single">Single</option>
+                    <option value="Married">Married</option>
+                    <option value="Divorced">Divorced</option>
+                    <option value="Widowed">Widowed</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Gender</label>
+                  <select
+                    value={privateInfo.gender}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, gender: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    disabled={!user?.employee?.id}
+                  >
+                    <option value="">Select</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Date of Joining</label>
+                  <input
+                    type="date"
+                    value={privateInfo.dateOfJoining}
+                    disabled
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                  />
+                </div>
+                {user?.employee?.id && (
+                  <button
+                    onClick={handleSavePrivateInfo}
+                    disabled={saving}
+                    className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {saving ? 'Saving...' : 'Save'}
+                  </button>
+                )}
+                {!user?.employee?.id && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <p className="text-sm text-yellow-800">
+                      <strong>Note:</strong> {
+                        ['Admin', 'HR Officer'].includes(user?.role) 
+                          ? 'You need to create your employee profile to save this information. Go to Employees page to create your profile.'
+                          : 'You need an employee profile to save this information. Contact your administrator.'
+                      }
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div className="space-y-4">
+                <h3 className="font-semibold text-gray-800 mb-2">Bank Details</h3>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Account Number</label>
+                  <input
+                    type="text"
+                    value={privateInfo.bankAccountNumber}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, bankAccountNumber: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    disabled={!user?.employee?.id}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Bank Name</label>
+                  <input
+                    type="text"
+                    value={privateInfo.bankName}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, bankName: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    disabled={!user?.employee?.id}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">IFSC Code</label>
+                  <input
+                    type="text"
+                    value={privateInfo.ifscCode}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, ifscCode: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    disabled={!user?.employee?.id}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">PAN No.</label>
+                  <input
+                    type="text"
+                    value={privateInfo.panNumber}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, panNumber: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    disabled={!user?.employee?.id}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">UAN No.</label>
+                  <input
+                    type="text"
+                    value={privateInfo.uanNumber}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, uanNumber: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    disabled={!user?.employee?.id}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">BIC Code</label>
+                  <input
+                    type="text"
+                    value={privateInfo.bicCode}
+                    onChange={(e) => setPrivateInfo({ ...privateInfo, bicCode: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    disabled={!user?.employee?.id}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'salary' && canViewSalaryInfo && (
+            <div className="space-y-6">
+              {!user?.employee?.id && (
+                <>
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                    <p className="text-sm text-yellow-800">
+                      <strong>Note:</strong> {
+                        ['Admin', 'HR Officer'].includes(user?.role) 
+                          ? 'Salary information is only available for employees with employee profiles. Go to Employees page to create your employee profile.'
+                          : 'Salary information is only available for employees with employee profiles. Contact your administrator to create your employee profile.'
+                      }
+                    </p>
+                  </div>
+                  <div className="text-center py-12">
+                    <p className="text-gray-500">No salary information available. Employee profile required.</p>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'security' && (
+            <div className="max-w-2xl space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Login ID</label>
+                <input
+                  type="text"
+                  value={user?.loginId || 'N/A'}
+                  disabled
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                <input
+                  type="email"
+                  value={user?.email || 'N/A'}
+                  disabled
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Role</label>
+                <input
+                  type="text"
+                  value={user?.role || 'N/A'}
+                  disabled
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                />
+              </div>
+              {!user?.employee?.id && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mt-4">
+                  <p className="text-sm text-yellow-800">
+                    <strong>Note:</strong> {
+                      ['Admin', 'HR Officer'].includes(user?.role) 
+                        ? 'You don\'t have an employee profile yet. Go to Employees page to create your employee profile for additional information.'
+                        : 'You don\'t have an employee profile yet. Contact your administrator to create your employee profile for additional information.'
+                    }
+                  </p>
+                </div>
+              )}
+              <p className="text-sm text-gray-500 mt-4">
+                To change your password, please use the Change Password feature in the settings menu.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     );
   }
 
-  if (!selectedEmployeeId) {
-    return (
-      <div className="text-center py-12">
-        <p className="text-gray-500">No employee profile found</p>
-        {canSelectEmployee && (
-          <button
-            onClick={() => navigate('/employees')}
-            className="mt-4 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
-          >
-            Go to Employees
-          </button>
-        )}
-      </div>
-    );
-  }
 
   return (
     <div>
@@ -609,15 +1142,6 @@ const Profile = () => {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
-              <input
-                type="text"
-                value={basicInfo.location}
-                onChange={(e) => setBasicInfo({ ...basicInfo, location: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              />
-            </div>
           </div>
         </div>
 
@@ -729,11 +1253,18 @@ const Profile = () => {
                   </button>
                 </div>
                 <div className="space-y-2">
-                  {resumeData.skills.map((skill) => (
-                    <div key={skill.id} className="flex items-center justify-between bg-gray-50 p-2 rounded">
-                      <span>{skill.skill_name}</span>
+                  {resumeData.skills.map((skill, index) => (
+                    <div key={skill.id || index} className="flex items-center justify-between bg-gray-50 p-2 rounded">
+                      <span>{skill.skill_name || skill}</span>
                       <button
-                        onClick={() => handleDeleteSkill(skill.id)}
+                        onClick={() => {
+                          if (skill.id) {
+                            handleDeleteSkill(skill.id);
+                          } else {
+                            console.error('Skill ID missing:', skill);
+                            toast.error('Skill ID is missing. Please refresh the page.');
+                          }
+                        }}
                         className="text-red-600 hover:text-red-800"
                       >
                         ✕
@@ -818,7 +1349,7 @@ const Profile = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Mailing Address</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Residing Address</label>
                 <textarea
                   value={privateInfo.mailingAddress}
                   onChange={(e) => setPrivateInfo({ ...privateInfo, mailingAddress: e.target.value })}
@@ -996,6 +1527,9 @@ const Profile = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-2">Percentage</label>
                     <input
                       type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
                       value={salaryInfo.basicSalaryPercentage}
                       onChange={(e) => {
                         const percent = parseFloat(e.target.value) || 0;
@@ -1024,6 +1558,9 @@ const Profile = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-2">Percentage</label>
                     <input
                       type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
                       value={salaryInfo.hraPercentage}
                       onChange={(e) => {
                         const percent = parseFloat(e.target.value) || 0;
@@ -1053,6 +1590,8 @@ const Profile = () => {
                     <input
                       type="number"
                       step="0.01"
+                      min="0"
+                      max="100"
                       value={salaryInfo.standardAllowancePercentage}
                       onChange={(e) => {
                         const percent = parseFloat(e.target.value) || 0;
@@ -1082,6 +1621,8 @@ const Profile = () => {
                     <input
                       type="number"
                       step="0.01"
+                      min="0"
+                      max="100"
                       value={salaryInfo.performanceBonusPercentage}
                       onChange={(e) => {
                         const percent = parseFloat(e.target.value) || 0;
@@ -1111,6 +1652,8 @@ const Profile = () => {
                     <input
                       type="number"
                       step="0.01"
+                      min="0"
+                      max="100"
                       value={salaryInfo.leaveTravelAllowancePercentage}
                       onChange={(e) => {
                         const percent = parseFloat(e.target.value) || 0;
@@ -1139,9 +1682,25 @@ const Profile = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-2">Percentage</label>
                     <input
                       type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
                       value={salaryInfo.fixedAllowancePercentage}
-                      disabled
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                      onChange={(e) => {
+                        const percent = parseFloat(e.target.value) || 0;
+                        const updatedSalaryInfo = { ...salaryInfo, fixedAllowancePercentage: percent };
+                        setSalaryInfo(updatedSalaryInfo);
+                        if (updatedSalaryInfo.monthlyWage) {
+                          // Calculate fixed allowance from the new percentage
+                          const monthlyWage = parseFloat(updatedSalaryInfo.monthlyWage) || 0;
+                          const fixedAllowance = monthlyWage * (percent / 100);
+                          setSalaryInfo({
+                            ...updatedSalaryInfo,
+                            fixedAllowance: fixedAllowance.toFixed(2)
+                          });
+                        }
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                     />
                   </div>
                   <div className="col-span-2">
@@ -1168,6 +1727,9 @@ const Profile = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-2">Percentage</label>
                     <input
                       type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
                       value={salaryInfo.pfEmployeePercentage}
                       onChange={(e) => {
                         const percent = parseFloat(e.target.value) || 0;
@@ -1192,6 +1754,9 @@ const Profile = () => {
                     <label className="block text-sm font-medium text-gray-700 mb-2">Percentage</label>
                     <input
                       type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
                       value={salaryInfo.pfEmployerPercentage}
                       onChange={(e) => {
                         const percent = parseFloat(e.target.value) || 0;

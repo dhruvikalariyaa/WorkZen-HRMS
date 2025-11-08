@@ -43,7 +43,7 @@ router.get('/:employeeId', authenticate, async (req, res) => {
 
     // Get skills
     const skillsResult = await pool.query(
-      'SELECT skill_name FROM employee_skills WHERE employee_id = $1 ORDER BY created_at',
+      'SELECT id, skill_name FROM employee_skills WHERE employee_id = $1 ORDER BY created_at',
       [employeeId]
     );
 
@@ -210,7 +210,15 @@ router.put('/:employeeId', authenticate, [
 
 // Update or create salary info (Admin/Payroll Officer only)
 router.put('/:employeeId/salary', authenticate, authorize('Admin', 'Payroll Officer'), [
-  body('monthlyWage').isFloat({ min: 0 }),
+  body('monthlyWage')
+    .custom((value) => {
+      if (value === '' || value === null || value === undefined) {
+        return false;
+      }
+      const numValue = parseFloat(value);
+      return !isNaN(numValue) && numValue >= 0;
+    })
+    .withMessage('Monthly wage must be a valid number greater than or equal to 0'),
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -228,42 +236,60 @@ router.put('/:employeeId/salary', authenticate, authorize('Admin', 'Payroll Offi
       standardAllowancePercentage,
       performanceBonusPercentage,
       leaveTravelAllowancePercentage,
+      fixedAllowancePercentage,
       pfEmployeePercentage,
       pfEmployerPercentage,
       professionalTax
     } = req.body;
 
+    // Validate monthlyWage is provided and valid
+    const monthlyWageNum = parseFloat(monthlyWage);
+    if (isNaN(monthlyWageNum) || monthlyWageNum < 0) {
+      return res.status(400).json({ error: 'Monthly wage must be a valid number greater than or equal to 0' });
+    }
+
+    // Validate and parse percentage values
+    const basicSalaryPercent = parseFloat(basicSalaryPercentage) || 60;
+    const hraPercent = parseFloat(hraPercentage) || 10;
+    const standardAllowancePercent = parseFloat(standardAllowancePercentage) || 0.5;
+    const perfBonusPercent = parseFloat(performanceBonusPercentage) || 8.33;
+    const ltaPercent = parseFloat(leaveTravelAllowancePercentage) || 8.33;
+    const pfEmpPercent = parseFloat(pfEmployeePercentage) || 12;
+    const pfEmpPercentValue = parseFloat(pfEmployerPercentage) || 12;
+
     // Calculate yearly wage
-    const yearlyWage = parseFloat(monthlyWage) * 12;
+    const yearlyWage = monthlyWageNum * 12;
 
     // Calculate basic salary
-    const basicSalaryPercent = parseFloat(basicSalaryPercentage) || 60;
-    const basicSalary = parseFloat((monthlyWage * (basicSalaryPercent / 100)).toFixed(2));
+    const basicSalary = parseFloat((monthlyWageNum * (basicSalaryPercent / 100)).toFixed(2));
 
     // Calculate HRA
-    const hraPercent = parseFloat(hraPercentage) || 10;
     const hra = parseFloat((basicSalary * (hraPercent / 100)).toFixed(2));
 
     // Calculate Standard Allowance
-    const standardAllowanceValue = standardAllowance || parseFloat((monthlyWage * ((standardAllowancePercentage || 0.5) / 100)).toFixed(2));
+    const standardAllowanceValue = standardAllowance ? parseFloat(standardAllowance) : parseFloat((monthlyWageNum * (standardAllowancePercent / 100)).toFixed(2));
 
     // Calculate Performance Bonus
-    const perfBonusPercent = parseFloat(performanceBonusPercentage) || 8.33;
     const performanceBonus = parseFloat((basicSalary * (perfBonusPercent / 100)).toFixed(2));
 
     // Calculate Leave Travel Allowance
-    const ltaPercent = parseFloat(leaveTravelAllowancePercentage) || 8.33;
     const leaveTravelAllowance = parseFloat((basicSalary * (ltaPercent / 100)).toFixed(2));
 
-    // Calculate Fixed Allowance (remaining amount)
-    const totalComponents = basicSalary + hra + standardAllowanceValue + performanceBonus + leaveTravelAllowance;
-    const fixedAllowance = parseFloat((monthlyWage - totalComponents).toFixed(2));
-    const fixedAllowancePercentage = parseFloat(((fixedAllowance / monthlyWage) * 100).toFixed(2));
+    // Calculate Fixed Allowance
+    let fixedAllowance, finalFixedAllowancePercentage;
+    if (fixedAllowancePercentage !== undefined && fixedAllowancePercentage !== null && fixedAllowancePercentage !== '') {
+      // If fixedAllowancePercentage is provided, use it
+      finalFixedAllowancePercentage = parseFloat(fixedAllowancePercentage);
+      fixedAllowance = parseFloat((monthlyWageNum * (finalFixedAllowancePercentage / 100)).toFixed(2));
+    } else {
+      // Calculate Fixed Allowance (remaining amount)
+      const totalComponents = basicSalary + hra + standardAllowanceValue + performanceBonus + leaveTravelAllowance;
+      fixedAllowance = parseFloat((monthlyWageNum - totalComponents).toFixed(2));
+      finalFixedAllowancePercentage = monthlyWageNum > 0 ? parseFloat(((fixedAllowance / monthlyWageNum) * 100).toFixed(2)) : 0;
+    }
 
     // Calculate PF
-    const pfEmpPercent = parseFloat(pfEmployeePercentage) || 12;
     const pfEmployee = parseFloat((basicSalary * (pfEmpPercent / 100)).toFixed(2));
-    const pfEmpPercentValue = parseFloat(pfEmployerPercentage) || 12;
     const pfEmployer = parseFloat((basicSalary * (pfEmpPercentValue / 100)).toFixed(2));
 
     // Professional Tax
@@ -294,13 +320,13 @@ router.put('/:employeeId/salary', authenticate, authorize('Admin', 'Payroll Offi
         WHERE employee_id = $21
         RETURNING *`,
         [
-          wageType, monthlyWage, yearlyWage,
+          wageType, monthlyWageNum, yearlyWage,
           basicSalary, basicSalaryPercent,
           hra, hraPercent,
-          standardAllowanceValue, standardAllowancePercentage || 0.5,
+          standardAllowanceValue, standardAllowancePercent,
           performanceBonus, perfBonusPercent,
           leaveTravelAllowance, ltaPercent,
-          fixedAllowance, fixedAllowancePercentage,
+          fixedAllowance, finalFixedAllowancePercentage,
           pfEmployee, pfEmpPercent,
           pfEmployer, pfEmpPercentValue,
           profTax,
@@ -324,13 +350,13 @@ router.put('/:employeeId/salary', authenticate, authorize('Admin', 'Payroll Offi
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
         RETURNING *`,
         [
-          employeeId, wageType, monthlyWage, yearlyWage,
+          employeeId, wageType, monthlyWageNum, yearlyWage,
           basicSalary, basicSalaryPercent,
           hra, hraPercent,
-          standardAllowanceValue, standardAllowancePercentage || 0.5,
+          standardAllowanceValue, standardAllowancePercent,
           performanceBonus, perfBonusPercent,
           leaveTravelAllowance, ltaPercent,
-          fixedAllowance, fixedAllowancePercentage,
+          fixedAllowance, finalFixedAllowancePercentage,
           pfEmployee, pfEmpPercent,
           pfEmployer, pfEmpPercentValue,
           profTax
@@ -386,6 +412,11 @@ router.delete('/:employeeId/skills/:skillId', authenticate, async (req, res) => 
   try {
     const { employeeId, skillId } = req.params;
 
+    // Validate skillId
+    if (!skillId || skillId === 'undefined' || skillId === 'null') {
+      return res.status(400).json({ error: 'Invalid skill ID' });
+    }
+
     // Check permissions
     if (req.user.role === 'Employee') {
       const employeeCheck = await pool.query(
@@ -395,6 +426,16 @@ router.delete('/:employeeId/skills/:skillId', authenticate, async (req, res) => 
       if (employeeCheck.rows.length === 0 || employeeCheck.rows[0].user_id !== req.user.id) {
         return res.status(403).json({ error: 'Access denied' });
       }
+    }
+
+    // Check if skill exists
+    const skillCheck = await pool.query(
+      'SELECT id FROM employee_skills WHERE id = $1 AND employee_id = $2',
+      [skillId, employeeId]
+    );
+
+    if (skillCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Skill not found' });
     }
 
     await pool.query('DELETE FROM employee_skills WHERE id = $1 AND employee_id = $2', [skillId, employeeId]);

@@ -28,6 +28,22 @@ router.get('/', authenticate, async (req, res) => {
       conditions.push(`l.employee_id = $${params.length + 1}`);
       params.push(employeeResult.rows[0].id);
     }
+    
+    // HR Officer and Payroll Officer: filter by their own if viewMode is not 'all'
+    if (['HR Officer', 'Payroll Officer'].includes(req.user.role)) {
+      // If viewMode is 'all', show all leaves (no filter)
+      // Otherwise (viewMode is 'my' or not provided), show only their own
+      if (req.query.viewMode !== 'all') {
+        const employeeResult = await pool.query(
+          'SELECT id FROM employees WHERE user_id = $1',
+          [req.user.id]
+        );
+        if (employeeResult.rows.length > 0) {
+          conditions.push(`l.employee_id = $${params.length + 1}`);
+          params.push(employeeResult.rows[0].id);
+        }
+      }
+    }
 
     // Filter by status
     if (req.query.status) {
@@ -120,8 +136,8 @@ const getAvailableDays = async (employeeId, leaveType) => {
   return availableDays;
 };
 
-// Apply for leave (Employee only)
-router.post('/', authenticate, authorize('Employee'), [
+// Apply for leave (Employee, HR Officer, Payroll Officer)
+router.post('/', authenticate, authorize('Employee', 'HR Officer', 'Payroll Officer'), [
   body('leaveType').notEmpty(),
   body('startDate').isISO8601(),
   body('endDate').isISO8601(),
@@ -294,10 +310,10 @@ router.get('/available-days', authenticate, async (req, res) => {
     let employeeId;
 
     if (req.query.employeeId && ['Admin', 'HR Officer', 'Payroll Officer'].includes(req.user.role)) {
-      // Admin/HR can check any employee
+      // Admin/HR/Payroll can check any employee
       employeeId = parseInt(req.query.employeeId);
     } else {
-      // Employees can only check their own
+      // Employees, HR Officer, Payroll Officer can only check their own
       const employeeResult = await pool.query(
         'SELECT id FROM employees WHERE user_id = $1',
         [req.user.id]

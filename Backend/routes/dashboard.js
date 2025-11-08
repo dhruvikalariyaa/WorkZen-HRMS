@@ -129,7 +129,7 @@ router.get('/stats', authenticate, async (req, res) => {
 // Get employee dashboard statistics (simplified)
 router.get('/employee/stats', authenticate, async (req, res) => {
   try {
-    if (req.user.role !== 'Employee') {
+    if (!['Employee', 'HR Officer', 'Payroll Officer'].includes(req.user.role)) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -229,8 +229,8 @@ router.get('/analytics/attendance-trends', authenticate, async (req, res) => {
     let employeeFilter = '';
     const params = [];
 
-    // Employees can only see their own stats
-    if (req.user.role === 'Employee') {
+    // Employees, HR Officer, Payroll Officer can only see their own stats
+    if (['Employee', 'HR Officer', 'Payroll Officer'].includes(req.user.role)) {
       const employeeResult = await pool.query(
         'SELECT id FROM employees WHERE user_id = $1',
         [req.user.id]
@@ -300,7 +300,7 @@ router.get('/analytics/leave-distribution', authenticate, async (req, res) => {
     let employeeFilter = '';
     const params = [];
 
-    if (req.user.role === 'Employee') {
+    if (['Employee', 'HR Officer', 'Payroll Officer'].includes(req.user.role)) {
       const employeeResult = await pool.query(
         'SELECT id FROM employees WHERE user_id = $1',
         [req.user.id]
