@@ -15,6 +15,7 @@ import reportRoutes from './routes/reports.js';
 import settingsRoutes from './routes/settings.js';
 import uploadRoutes from './routes/upload.js';
 import companyRoutes from './routes/company.js';
+import profileRoutes from './routes/profile.js';
 
 dotenv.config();
 
@@ -45,6 +46,7 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/company', companyRoutes);
+app.use('/api/profile', profileRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

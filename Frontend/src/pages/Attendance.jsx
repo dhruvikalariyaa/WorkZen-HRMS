@@ -19,27 +19,33 @@ const Attendance = () => {
 
   const isEmployee = user?.role === 'Employee';
   const isAdmin = ['Admin', 'HR Officer', 'Payroll Officer'].includes(user?.role);
+  const canClockInOut = ['Employee', 'HR Officer', 'Payroll Officer'].includes(user?.role);
+  const isHRorPayroll = ['HR Officer', 'Payroll Officer'].includes(user?.role);
+  
+  // For HR/Payroll: toggle between "All Attendance" and "My Attendance"
+  const [viewMode, setViewMode] = useState('all'); // 'all' or 'my'
+  const [showViewModeDropdown, setShowViewModeDropdown] = useState(false);
 
   useEffect(() => {
     fetchAttendance();
-    if (isEmployee) {
+    if (canClockInOut && (isEmployee || viewMode === 'my')) {
       fetchSummary();
     }
-  }, [selectedDate, selectedMonth, selectedYear, isEmployee]);
+  }, [selectedDate, selectedMonth, selectedYear, canClockInOut, viewMode]);
 
   const fetchAttendance = async () => {
     try {
       setLoading(true);
       const params = {};
       
-      if (isEmployee) {
-        // For employees: get monthly data
+      if (isEmployee || (isHRorPayroll && viewMode === 'my')) {
+        // For employees or HR/Payroll viewing their own: get monthly data
         const firstDay = new Date(selectedYear, selectedMonth, 1).toISOString().split('T')[0];
         const lastDay = new Date(selectedYear, selectedMonth + 1, 0).toISOString().split('T')[0];
         params.startDate = firstDay;
         params.endDate = lastDay;
       } else {
-        // For admin: get daily data
+        // For admin/HR/Payroll viewing all: get daily data
         params.date = selectedDate;
         if (searchTerm) {
           params.search = searchTerm;
@@ -87,7 +93,7 @@ const Attendance = () => {
   };
 
   const navigateDate = (direction) => {
-    if (isEmployee) {
+    if (isEmployee || (isHRorPayroll && viewMode === 'my')) {
       // Navigate months
       if (direction === 'prev') {
         if (selectedMonth === 0) {
@@ -123,7 +129,7 @@ const Attendance = () => {
   };
 
   const getCurrentDateDisplay = () => {
-    if (isEmployee) {
+    if (isEmployee || (isHRorPayroll && viewMode === 'my')) {
       return `${new Date(selectedYear, selectedMonth, 1).getDate()}, ${getMonthName(selectedMonth)} ${selectedYear}`;
     } else {
       const date = new Date(selectedDate);
@@ -138,7 +144,63 @@ const Attendance = () => {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Attendance</h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-2xl font-bold text-gray-800">Attendance</h1>
+        </div>
+        <div className="flex items-center gap-3">
+          {/* Dropdown for HR/Payroll Officer */}
+          {isHRorPayroll && (
+            <div className="relative">
+              <button
+                onClick={() => setShowViewModeDropdown(!showViewModeDropdown)}
+                className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 font-medium transition-colors flex items-center gap-2"
+              >
+                {viewMode === 'all' ? 'All Attendance' : 'My Attendance'}
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {showViewModeDropdown && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-10" 
+                    onClick={() => setShowViewModeDropdown(false)}
+                  ></div>
+                  <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-20">
+                    <button
+                      onClick={() => {
+                        setViewMode('all');
+                        setSearchTerm('');
+                        setShowViewModeDropdown(false);
+                      }}
+                      className={`w-full text-left px-4 py-3 rounded-t-lg transition-colors ${
+                        viewMode === 'all'
+                          ? 'bg-purple-50 text-purple-600 font-medium'
+                          : 'text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      All Attendance
+                    </button>
+                    <button
+                      onClick={() => {
+                        setViewMode('my');
+                        setSearchTerm('');
+                        setShowViewModeDropdown(false);
+                      }}
+                      className={`w-full text-left px-4 py-3 rounded-b-lg transition-colors ${
+                        viewMode === 'my'
+                          ? 'bg-purple-50 text-purple-600 font-medium'
+                          : 'text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      My Attendance
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Date Navigation */}
@@ -152,44 +214,44 @@ const Attendance = () => {
               &lt;
             </button>
             <div className="flex items-center space-x-2">
-              {isEmployee ? (
-                <select
-                  value={selectedMonth}
-                  onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                  className="px-3 py-1 border border-gray-300 rounded"
-                >
-                  {Array.from({ length: 12 }, (_, i) => (
-                    <option key={i} value={i}>
-                      {getMonthName(i)}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type="date"
-                  value={selectedDate}
-                  onChange={(e) => setSelectedDate(e.target.value)}
-                  className="px-3 py-1 border border-gray-300 rounded"
-                />
-              )}
-              {isEmployee && (
-                <select
-                  value={selectedYear}
-                  onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                  className="px-3 py-1 border border-gray-300 rounded"
-                >
-                  {Array.from({ length: 10 }, (_, i) => {
-                    const year = new Date().getFullYear() - 5 + i;
-                    return (
-                      <option key={year} value={year}>
-                        {year}
+              {(isEmployee || (isHRorPayroll && viewMode === 'my')) ? (
+                <>
+                  <select
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+                    className="px-3 py-1 border border-gray-300 rounded"
+                  >
+                    {Array.from({ length: 12 }, (_, i) => (
+                      <option key={i} value={i}>
+                        {getMonthName(i)}
                       </option>
-                    );
-                  })}
-                </select>
-              )}
-              {!isEmployee && (
-                <span className="px-3 py-1 text-gray-700">Day</span>
+                    ))}
+                  </select>
+                  <select
+                    value={selectedYear}
+                    onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                    className="px-3 py-1 border border-gray-300 rounded"
+                  >
+                    {Array.from({ length: 10 }, (_, i) => {
+                      const year = new Date().getFullYear() - 5 + i;
+                      return (
+                        <option key={year} value={year}>
+                          {year}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </>
+              ) : (
+                <>
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="px-3 py-1 border border-gray-300 rounded"
+                  />
+                  <span className="px-3 py-1 text-gray-700">Day</span>
+                </>
               )}
             </div>
             <button
@@ -200,7 +262,7 @@ const Attendance = () => {
             </button>
           </div>
           
-          {!isEmployee && (
+          {!isEmployee && viewMode === 'all' && (
             <input
               type="text"
               placeholder="Searchbar"
@@ -212,8 +274,8 @@ const Attendance = () => {
         </div>
       </div>
 
-      {/* Summary Boxes for Employees */}
-      {isEmployee && (
+      {/* Summary Boxes for Employees/HR Officer/Payroll Officer (only in My Attendance view) */}
+      {canClockInOut && (isEmployee || viewMode === 'my') && (
         <div className="grid grid-cols-3 gap-4 mb-6">
           <div className="bg-white rounded-lg shadow-md p-4">
             <p className="text-sm text-gray-600 mb-1">Count of days present</p>
@@ -240,7 +302,7 @@ const Attendance = () => {
           <table className="w-full">
             <thead>
               <tr className="border-b">
-                {isEmployee ? (
+                {(isEmployee || (isHRorPayroll && viewMode === 'my')) ? (
                   <>
                     <th className="text-left py-3 px-4 font-semibold">Date</th>
                     <th className="text-left py-3 px-4 font-semibold">Check In</th>
@@ -262,14 +324,14 @@ const Attendance = () => {
             <tbody>
               {attendance.length === 0 ? (
                 <tr>
-                  <td colSpan={isEmployee ? 5 : 5} className="text-center py-8 text-gray-500">
+                  <td colSpan={5} className="text-center py-8 text-gray-500">
                     No attendance records found
                   </td>
                 </tr>
               ) : (
                 attendance.map((record) => (
                   <tr key={record.id} className="border-b hover:bg-gray-50">
-                    {isEmployee ? (
+                    {(isEmployee || (isHRorPayroll && viewMode === 'my')) ? (
                       <>
                         <td className="py-3 px-4">{formatDate(record.date)}</td>
                         <td className="py-3 px-4">{formatTime(record.check_in)}</td>

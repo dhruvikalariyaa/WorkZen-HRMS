@@ -9,7 +9,7 @@ import { PAYROLL_CONSTANTS, ATTENDANCE_STATUS } from '../utils/constants.js';
 const router = express.Router();
 
 // Get today's check-in status for employee (must be before / route)
-router.get('/today-status', authenticate, authorize('Employee'), async (req, res) => {
+router.get('/today-status', authenticate, authorize('Employee', 'HR Officer', 'Payroll Officer'), async (req, res) => {
   try {
     const today = getTodayDate();
     
@@ -30,15 +30,41 @@ router.get('/today-status', authenticate, authorize('Employee'), async (req, res
     );
 
     if (result.rows.length === 0) {
-      return res.json({ checkedIn: false, checkedOut: false, checkIn: null, checkOut: null });
+      return res.json({ checkedIn: false, checkedOut: false, checkIn: null, checkOut: null, extraHours: 0, extraMinutes: 0 });
     }
 
     const record = result.rows[0];
+    let extraHours = 0;
+    let extraMinutes = 0;
+    let totalHours = 0;
+
+    // If checked in but not checked out, calculate hours from check-in to now
+    if (record.check_in && !record.check_out) {
+      const now = new Date();
+      const checkInTime = record.check_in.split(':');
+      const checkInDate = new Date();
+      checkInDate.setHours(parseInt(checkInTime[0]), parseInt(checkInTime[1]), 0, 0);
+      
+      // Calculate total hours worked
+      totalHours = (now - checkInDate) / (1000 * 60 * 60);
+      
+      // Calculate extra hours if more than 8 hours
+      const STANDARD_WORK_HOURS = PAYROLL_CONSTANTS.STANDARD_WORK_HOURS;
+      if (totalHours > STANDARD_WORK_HOURS) {
+        const extraHoursTotal = totalHours - STANDARD_WORK_HOURS;
+        extraHours = Math.floor(extraHoursTotal);
+        extraMinutes = Math.floor((extraHoursTotal - extraHours) * 60);
+      }
+    }
+
     res.json({
       checkedIn: !!record.check_in,
       checkedOut: !!record.check_out,
       checkIn: record.check_in,
-      checkOut: record.check_out
+      checkOut: record.check_out,
+      extraHours: extraHours,
+      extraMinutes: extraMinutes,
+      totalHours: totalHours
     });
   } catch (error) {
     const errorResponse = handleError(error, 'Get today status');
@@ -47,7 +73,7 @@ router.get('/today-status', authenticate, authorize('Employee'), async (req, res
 });
 
 // Get attendance summary for employee (for monthly view) - must be before / route
-router.get('/summary', authenticate, authorize('Employee'), async (req, res) => {
+router.get('/summary', authenticate, authorize('Employee', 'HR Officer', 'Payroll Officer'), async (req, res) => {
   try {
     const employeeResult = await pool.query(
       'SELECT id FROM employees WHERE user_id = $1',
@@ -131,6 +157,18 @@ router.get('/', authenticate, async (req, res) => {
       params.push(employeeResult.rows[0].id);
     }
 
+    // HR Officer and Payroll Officer viewing their own attendance (when startDate/endDate provided without search)
+    if (['HR Officer', 'Payroll Officer'].includes(req.user.role) && req.query.startDate && req.query.endDate && !req.query.search) {
+      const employeeResult = await pool.query(
+        'SELECT id FROM employees WHERE user_id = $1',
+        [req.user.id]
+      );
+      if (employeeResult.rows.length > 0) {
+        conditions.push(`a.employee_id = $${params.length + 1}`);
+        params.push(employeeResult.rows[0].id);
+      }
+    }
+
     // For Admin/HR/Payroll: default to today's date if no date specified
     if (['Admin', 'HR Officer', 'Payroll Officer'].includes(req.user.role) && !req.query.date && !req.query.startDate) {
       const today = getTodayDate();
@@ -173,15 +211,43 @@ router.get('/', authenticate, async (req, res) => {
       query += ' WHERE ' + conditions.join(' AND ');
     }
 
-    // Order by date (ascending for employees to show chronological order, descending for admins)
-    if (req.user.role === 'Employee') {
+    // Order by date (ascending for employees/HR/Payroll viewing their own, descending for admins viewing all)
+    if (req.user.role === 'Employee' || (['HR Officer', 'Payroll Officer'].includes(req.user.role) && req.query.startDate && !req.query.search)) {
       query += ' ORDER BY a.date ASC';
     } else {
       query += ' ORDER BY e.first_name ASC';
     }
 
     const result = await pool.query(query, params);
-    res.json(result.rows);
+    
+    // Calculate extra hours for records without check_out but with check_in (if 8+ hours passed)
+    const STANDARD_WORK_HOURS = PAYROLL_CONSTANTS.STANDARD_WORK_HOURS;
+    const today = getTodayDate();
+    const now = new Date();
+    
+    const processedRows = result.rows.map(record => {
+      // Only calculate for today's records without check_out
+      if (record.check_in && !record.check_out && record.date === today) {
+        const checkInTime = record.check_in.split(':');
+        const checkInDate = new Date();
+        checkInDate.setHours(parseInt(checkInTime[0]), parseInt(checkInTime[1]), 0, 0);
+        
+        // Calculate total hours worked
+        let totalHours = (now - checkInDate) / (1000 * 60 * 60);
+        
+        // Calculate extra hours if more than 8 hours
+        if (totalHours > STANDARD_WORK_HOURS) {
+          const extraHours = totalHours - STANDARD_WORK_HOURS;
+          record.extra_hours = parseFloat(extraHours.toFixed(2));
+          record.total_hours = parseFloat(totalHours.toFixed(2));
+        } else {
+          record.extra_hours = record.extra_hours || 0;
+        }
+      }
+      return record;
+    });
+    
+    res.json(processedRows);
   } catch (error) {
     const errorResponse = handleError(error, 'Get attendance');
     res.status(500).json(errorResponse);
@@ -303,8 +369,8 @@ router.put('/:id', authenticate, authorize('Admin', 'HR Officer'), async (req, r
   }
 });
 
-// Check In (Employee only)
-router.post('/checkin', authenticate, authorize('Employee'), async (req, res) => {
+// Check In (Employee, HR Officer, Payroll Officer)
+router.post('/checkin', authenticate, authorize('Employee', 'HR Officer', 'Payroll Officer'), async (req, res) => {
   try {
     const today = getTodayDate();
     const now = new Date();
@@ -358,8 +424,8 @@ router.post('/checkin', authenticate, authorize('Employee'), async (req, res) =>
   }
 });
 
-// Check Out (Employee only)
-router.post('/checkout', authenticate, authorize('Employee'), async (req, res) => {
+// Check Out (Employee, HR Officer, Payroll Officer)
+router.post('/checkout', authenticate, authorize('Employee', 'HR Officer', 'Payroll Officer'), async (req, res) => {
   try {
     const today = getTodayDate();
     const now = new Date();

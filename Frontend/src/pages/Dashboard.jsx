@@ -23,8 +23,10 @@ const Dashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
-  const [checkInStatus, setCheckInStatus] = useState({ checkedIn: false, checkedOut: false, checkIn: null, checkOut: null });
+  const [checkInStatus, setCheckInStatus] = useState({ checkedIn: false, checkedOut: false, checkIn: null, checkOut: null, extraHours: 0, extraMinutes: 0 });
   const [checkInTime, setCheckInTime] = useState(null);
+  const [currentExtraHours, setCurrentExtraHours] = useState(0);
+  const [currentExtraMinutes, setCurrentExtraMinutes] = useState(0);
   const [stats, setStats] = useState({
     totalEmployees: 0,
     todayAttendance: { present: 0, absent: 0, leave: 0 },
@@ -36,13 +38,45 @@ const Dashboard = () => {
   const [payrollSummary, setPayrollSummary] = useState([]);
 
   useEffect(() => {
-    if (user?.role === 'Employee') {
+    if (['Employee', 'HR Officer', 'Payroll Officer'].includes(user?.role)) {
       fetchCheckInStatus();
       fetchEmployeeDashboardStats();
     } else {
       fetchDashboardStats();
     }
   }, [user]);
+
+  // Update extra hours every minute if checked in but not checked out
+  useEffect(() => {
+    if (checkInStatus.checkedIn && !checkInStatus.checkedOut && checkInTime) {
+      const calculateExtraTime = () => {
+        const now = new Date();
+        const hoursWorked = (now - checkInTime) / (1000 * 60 * 60);
+        const STANDARD_WORK_HOURS = 8;
+        
+        if (hoursWorked > STANDARD_WORK_HOURS) {
+          const extraHoursTotal = hoursWorked - STANDARD_WORK_HOURS;
+          const hours = Math.floor(extraHoursTotal);
+          const minutes = Math.floor((extraHoursTotal - hours) * 60);
+          setCurrentExtraHours(hours);
+          setCurrentExtraMinutes(minutes);
+        } else {
+          setCurrentExtraHours(0);
+          setCurrentExtraMinutes(0);
+        }
+      };
+
+      // Calculate immediately
+      calculateExtraTime();
+
+      // Update every minute
+      const interval = setInterval(calculateExtraTime, 60000);
+      return () => clearInterval(interval);
+    } else {
+      setCurrentExtraHours(0);
+      setCurrentExtraMinutes(0);
+    }
+  }, [checkInStatus.checkedIn, checkInStatus.checkedOut, checkInTime]);
 
   const fetchCheckInStatus = async () => {
     try {
@@ -53,6 +87,11 @@ const Dashboard = () => {
         const checkInDate = new Date();
         checkInDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
         setCheckInTime(checkInDate);
+      }
+      // Update extra hours from backend response
+      if (response.data.extraHours !== undefined) {
+        setCurrentExtraHours(response.data.extraHours || 0);
+        setCurrentExtraMinutes(response.data.extraMinutes || 0);
       }
     } catch (error) {
       console.error('Failed to fetch check-in status:', error);
@@ -152,8 +191,8 @@ const Dashboard = () => {
     );
   }
 
-  // Employee view - show check-in/check-out with professional design
-  if (user?.role === 'Employee') {
+  // Employee/HR Officer/Payroll Officer view - show check-in/check-out with professional design
+  if (['Employee', 'HR Officer', 'Payroll Officer'].includes(user?.role)) {
     return (
       <div className="space-y-6">
         {/* Header Section */}
@@ -175,6 +214,11 @@ const Dashboard = () => {
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Checked in at {checkInStatus.checkIn}</p>
                   <p className="text-sm text-gray-500">Working since {checkInTime ? formatTimeSince(checkInTime) : 'checking...'}</p>
+                  {(currentExtraHours > 0 || currentExtraMinutes > 0) && (
+                    <p className="text-sm text-orange-600 font-medium mt-1">
+                      Extra Time: {currentExtraHours > 0 && `${currentExtraHours}h `}{currentExtraMinutes > 0 && `${currentExtraMinutes}m`}
+                    </p>
+                  )}
                 </div>
               )}
               {checkInStatus.checkedIn && checkInStatus.checkedOut && (

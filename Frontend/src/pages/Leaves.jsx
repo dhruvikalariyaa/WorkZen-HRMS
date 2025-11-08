@@ -24,15 +24,23 @@ const Leaves = () => {
   const [calculatedDays, setCalculatedDays] = useState(0);
   const [viewingAttachment, setViewingAttachment] = useState(null);
   const [useGoogleViewer, setUseGoogleViewer] = useState(false);
+  const [showViewModeDropdown, setShowViewModeDropdown] = useState(false);
 
   const isEmployee = user?.role === 'Employee';
+  const isHRorPayroll = ['HR Officer', 'Payroll Officer'].includes(user?.role);
+  const canApplyLeave = ['Employee', 'HR Officer', 'Payroll Officer'].includes(user?.role);
   const canApprove = ['Admin', 'HR Officer', 'Manager', 'Payroll Officer'].includes(user?.role);
+  
+  // For HR/Payroll: toggle between "All Time Off" and "My Time Off"
+  const [viewMode, setViewMode] = useState('my'); // 'all' or 'my'
 
   useEffect(() => {
     fetchLeaves();
     fetchLeaveTypes();
-    fetchAvailableDays();
-  }, [searchTerm, statusFilter, selectedLeaveType]);
+    if (canApplyLeave && (isEmployee || viewMode === 'my')) {
+      fetchAvailableDays();
+    }
+  }, [searchTerm, statusFilter, selectedLeaveType, viewMode]);
 
   useEffect(() => {
     if (applyLeaveData.startDate && applyLeaveData.endDate) {
@@ -49,6 +57,9 @@ const Leaves = () => {
   const fetchLeaves = async () => {
     try {
       const params = {};
+      if (isHRorPayroll) {
+        params.viewMode = viewMode;
+      }
       if (searchTerm) params.search = searchTerm;
       if (statusFilter) params.status = statusFilter;
       if (selectedLeaveType) params.leaveType = selectedLeaveType;
@@ -167,22 +178,73 @@ const Leaves = () => {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">
-          {isEmployee ? 'My Time Off' : 'Time Off Management'}
-        </h1>
-        {isEmployee && (
-          <button
-            onClick={() => setShowApplyLeave(true)}
-            className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 font-semibold"
-          >
-            NEW
-          </button>
-        )}
-        {canApprove && (
-          <div className="text-sm text-gray-600">
-            Select a pending leave request below to approve or reject
-          </div>
-        )}
+        <div className="flex items-center gap-4">
+          <h1 className="text-2xl font-bold text-gray-800">
+            {isEmployee || (isHRorPayroll && viewMode === 'my') ? 'My Time Off' : 'Time Off Management'}
+          </h1>
+        </div>
+        <div className="flex items-center gap-3">
+          {isHRorPayroll && (
+            <div className="relative">
+              <button
+                onClick={() => setShowViewModeDropdown(!showViewModeDropdown)}
+                className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 font-medium transition-colors flex items-center gap-2"
+              >
+                {viewMode === 'all' ? 'All Time Off' : 'My Time Off'}
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {showViewModeDropdown && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-10" 
+                    onClick={() => setShowViewModeDropdown(false)}
+                  ></div>
+                  <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-20">
+                    <button
+                      onClick={() => {
+                        setViewMode('all');
+                        setSearchTerm('');
+                        setShowViewModeDropdown(false);
+                      }}
+                      className={`w-full text-left px-4 py-3 rounded-t-lg transition-colors ${
+                        viewMode === 'all'
+                          ? 'bg-purple-50 text-purple-600 font-medium'
+                          : 'text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      All Time Off
+                    </button>
+                    <button
+                      onClick={() => {
+                        setViewMode('my');
+                        setSearchTerm('');
+                        setShowViewModeDropdown(false);
+                      }}
+                      className={`w-full text-left px-4 py-3 rounded-b-lg transition-colors ${
+                        viewMode === 'my'
+                          ? 'bg-purple-50 text-purple-600 font-medium'
+                          : 'text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      My Time Off
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          {canApplyLeave && (isEmployee || viewMode === 'my') && (
+            <button
+              onClick={() => setShowApplyLeave(true)}
+              className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 font-semibold transition-colors"
+            >
+              NEW
+            </button>
+          )}
+         
+        </div>
       </div>
 
       {/* Leave Type Tabs */}
@@ -224,13 +286,15 @@ const Leaves = () => {
       {/* Search and Filter */}
       <div className="bg-white rounded-lg shadow-md p-4 mb-6">
         <div className="flex space-x-4">
-          <input
-            type="text"
-            placeholder="Search by name or employee ID..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-          />
+          {(user?.role === 'Admin' || user?.role === 'Manager' || (isHRorPayroll && viewMode === 'all')) && (
+            <input
+              type="text"
+              placeholder="Search by name or employee ID..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
+            />
+          )}
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
@@ -522,7 +586,9 @@ const Leaves = () => {
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
-                {!isEmployee && <th className="text-left py-3 px-4 font-semibold text-gray-700">Name</th>}
+                {(isEmployee || (isHRorPayroll && viewMode === 'my')) ? null : (
+                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Name</th>
+                )}
                 <th className="text-left py-3 px-4 font-semibold text-gray-700">Start Date</th>
                 <th className="text-left py-3 px-4 font-semibold text-gray-700">End Date</th>
                 <th className="text-left py-3 px-4 font-semibold text-gray-700">Time off Type</th>
@@ -534,14 +600,14 @@ const Leaves = () => {
             <tbody>
               {leaves.length === 0 ? (
                 <tr>
-                  <td colSpan={isEmployee ? 6 : canApprove ? 7 : 6} className="text-center py-8 text-gray-500">
+                  <td colSpan={(isEmployee || (isHRorPayroll && viewMode === 'my')) ? (canApprove ? 6 : 5) : (canApprove ? 7 : 6)} className="text-center py-8 text-gray-500">
                     No leave requests found
                   </td>
                 </tr>
               ) : (
                 leaves.map((leave) => (
                   <tr key={leave.id} className="border-b hover:bg-gray-50">
-                    {!isEmployee && (
+                    {(isEmployee || (isHRorPayroll && viewMode === 'my')) ? null : (
                       <td className="py-3 px-4">
                         {leave.first_name} {leave.last_name}
                       </td>

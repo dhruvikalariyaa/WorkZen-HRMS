@@ -12,12 +12,30 @@ const router = express.Router();
 // Get all employees (with role-based filtering)
 router.get('/', authenticate, async (req, res) => {
   try {
+    const today = new Date().toISOString().split('T')[0];
+    
     let query = `
-      SELECT e.*, u.login_id, u.email, u.role
+      SELECT 
+        e.*, 
+        u.login_id, 
+        u.email, 
+        u.role,
+        CASE 
+          WHEN l.id IS NOT NULL AND l.status = 'Approved' AND CAST($1 AS DATE) BETWEEN l.start_date AND l.end_date THEN 'on_leave'
+          WHEN a.status = 'Present' THEN 'present'
+          WHEN a.status = 'Leave' THEN 'on_leave'
+          WHEN a.status = 'Absent' THEN 'absent'
+          WHEN a.id IS NULL AND l.id IS NULL THEN 'absent'
+          ELSE 'absent'
+        END as attendance_status
       FROM employees e
       LEFT JOIN users u ON e.user_id = u.id
+      LEFT JOIN attendance a ON e.id = a.employee_id AND a.date = CAST($1 AS DATE)
+      LEFT JOIN leaves l ON e.id = l.employee_id 
+        AND l.status = 'Approved' 
+        AND CAST($1 AS DATE) BETWEEN l.start_date AND l.end_date
     `;
-    const params = [];
+    const params = [today];
     const conditions = [];
 
     // Employees can view all employees (read-only directory access)
@@ -41,7 +59,7 @@ router.get('/', authenticate, async (req, res) => {
       query += ' WHERE ' + conditions.join(' AND ');
     }
 
-    query += ' ORDER BY e.created_at DESC';
+    query += ' ORDER BY e.first_name ASC';
 
     const result = await pool.query(query, params);
     res.json(result.rows);
@@ -70,9 +88,11 @@ router.get('/with-status', authenticate, async (req, res) => {
         a.check_out,
         CASE 
           WHEN l.id IS NOT NULL AND l.status = 'Approved' AND CAST($1 AS DATE) BETWEEN l.start_date AND l.end_date THEN 'on_leave'
-          WHEN a.status = 'Present' AND a.check_in IS NOT NULL THEN 'present'
-          WHEN a.status = 'Absent' OR (a.id IS NULL AND l.id IS NULL) THEN 'absent'
-          ELSE 'unknown'
+          WHEN a.status = 'Present' THEN 'present'
+          WHEN a.status = 'Leave' THEN 'on_leave'
+          WHEN a.status = 'Absent' THEN 'absent'
+          WHEN a.id IS NULL AND l.id IS NULL THEN 'absent'
+          ELSE 'absent'
         END as current_status
       FROM employees e
       LEFT JOIN attendance a ON e.id = a.employee_id AND a.date = CAST($1 AS DATE)
@@ -247,6 +267,70 @@ router.post('/', authenticate, authorize('Admin', 'HR Officer'), [
       ]
     );
 
+    const newEmployee = employeeResult.rows[0];
+    const newEmployeeId = newEmployee.id;
+
+    // If salary is provided, create salary_info record automatically
+    if (salary && parseFloat(salary) > 0) {
+      const monthlyWage = parseFloat(salary);
+      const yearlyWage = monthlyWage * 12;
+      
+      // Default percentages
+      const basicSalaryPercent = 60;
+      const basicSalary = parseFloat((monthlyWage * (basicSalaryPercent / 100)).toFixed(2));
+      const hraPercent = 10;
+      const hra = parseFloat((basicSalary * (hraPercent / 100)).toFixed(2));
+      const standardAllowancePercent = 0.5;
+      const standardAllowance = parseFloat((monthlyWage * (standardAllowancePercent / 100)).toFixed(2));
+      const perfBonusPercent = 8.33;
+      const performanceBonus = parseFloat((basicSalary * (perfBonusPercent / 100)).toFixed(2));
+      const ltaPercent = 8.33;
+      const leaveTravelAllowance = parseFloat((basicSalary * (ltaPercent / 100)).toFixed(2));
+      
+      // Calculate Fixed Allowance (remaining)
+      const totalComponents = basicSalary + hra + standardAllowance + performanceBonus + leaveTravelAllowance;
+      const fixedAllowance = parseFloat((monthlyWage - totalComponents).toFixed(2));
+      const fixedAllowancePercentage = parseFloat(((fixedAllowance / monthlyWage) * 100).toFixed(2));
+      
+      // Calculate PF
+      const pfEmpPercent = 12;
+      const pfEmployee = parseFloat((basicSalary * (pfEmpPercent / 100)).toFixed(2));
+      const pfEmployer = parseFloat((basicSalary * (pfEmpPercent / 100)).toFixed(2));
+      const profTax = 200;
+
+      try {
+        await pool.query(
+          `INSERT INTO salary_info (
+            employee_id, wage_type, monthly_wage, yearly_wage,
+            basic_salary, basic_salary_percentage,
+            hra, hra_percentage,
+            standard_allowance, standard_allowance_percentage,
+            performance_bonus, performance_bonus_percentage,
+            leave_travel_allowance, leave_travel_allowance_percentage,
+            fixed_allowance, fixed_allowance_percentage,
+            pf_employee, pf_employee_percentage,
+            pf_employer, pf_employer_percentage,
+            professional_tax
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
+          [
+            newEmployeeId, 'Fixed', monthlyWage, yearlyWage,
+            basicSalary, basicSalaryPercent,
+            hra, hraPercent,
+            standardAllowance, standardAllowancePercent,
+            performanceBonus, perfBonusPercent,
+            leaveTravelAllowance, ltaPercent,
+            fixedAllowance, fixedAllowancePercentage,
+            pfEmployee, pfEmpPercent,
+            pfEmployer, pfEmpPercent,
+            profTax
+          ]
+        );
+      } catch (salaryError) {
+        // Log error but don't fail employee creation
+        console.error('Error creating salary_info:', salaryError);
+      }
+    }
+
     res.status(201).json({
       ...employeeResult.rows[0],
       loginId: userResult.rows[0].login_id,
@@ -311,14 +395,14 @@ router.put('/:id', authenticate, authorize('Admin', 'HR Officer'), [
       updateFields.push(`department = $${paramCount++}`);
       values.push(department);
     }
-    if (position !== undefined && ['Admin', 'HR Officer'].includes(req.user.role)) {
-      updateFields.push(`position = $${paramCount++}`);
-      values.push(position);
-    }
-    if (hireDate && ['Admin', 'HR Officer'].includes(req.user.role)) {
-      updateFields.push(`hire_date = $${paramCount++}`);
-      values.push(hireDate);
-    }
+     if (position !== undefined && ['Admin', 'HR Officer'].includes(req.user.role)) {
+       updateFields.push(`position = $${paramCount++}`);
+       values.push(position);
+     }
+     if (hireDate && ['Admin', 'HR Officer'].includes(req.user.role)) {
+       updateFields.push(`hire_date = $${paramCount++}`);
+       values.push(hireDate);
+     }
     if (salary && ['Admin', 'HR Officer'].includes(req.user.role)) {
       updateFields.push(`salary = $${paramCount++}`);
       values.push(salary);

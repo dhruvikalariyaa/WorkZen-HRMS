@@ -233,7 +233,14 @@ const Layout = ({ children }) => {
                 <button
                   onClick={() => {
                     setShowProfileMenu(false);
-                    navigate('/profile');
+                    // Navigate to user's own profile
+                    // If they have employee record, show full employee profile
+                    // Otherwise, show user account profile
+                    if (user?.employee?.id) {
+                      navigate(`/profile/${user.employee.id}`);
+                    } else {
+                      navigate('/profile');
+                    }
                   }}
                   className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center"
                 >
