@@ -1,58 +1,135 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
+import { toast } from 'react-toastify';
 
 const Attendance = () => {
   const { user } = useAuth();
   const [attendance, setAttendance] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [dateFilter, setDateFilter] = useState('');
-  const [showMarkAttendance, setShowMarkAttendance] = useState(false);
-  const [markAttendanceData, setMarkAttendanceData] = useState({
-    date: new Date().toISOString().split('T')[0],
-    status: 'Present',
-    checkIn: '',
-    checkOut: ''
-  });
+  
+  // For Admin/HR/Payroll: daily view
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  // For Employees: monthly view
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [summary, setSummary] = useState({ presentDays: 0, leaveDays: 0, totalWorkingDays: 0 });
+
+  const isEmployee = user?.role === 'Employee';
+  const isAdmin = ['Admin', 'HR Officer', 'Payroll Officer'].includes(user?.role);
 
   useEffect(() => {
     fetchAttendance();
-  }, [searchTerm, dateFilter]);
+    if (isEmployee) {
+      fetchSummary();
+    }
+  }, [selectedDate, selectedMonth, selectedYear, isEmployee]);
 
   const fetchAttendance = async () => {
     try {
+      setLoading(true);
       const params = {};
-      if (searchTerm) params.search = searchTerm;
-      if (dateFilter) params.date = dateFilter;
+      
+      if (isEmployee) {
+        // For employees: get monthly data
+        const firstDay = new Date(selectedYear, selectedMonth, 1).toISOString().split('T')[0];
+        const lastDay = new Date(selectedYear, selectedMonth + 1, 0).toISOString().split('T')[0];
+        params.startDate = firstDay;
+        params.endDate = lastDay;
+      } else {
+        // For admin: get daily data
+        params.date = selectedDate;
+        if (searchTerm) {
+          params.search = searchTerm;
+        }
+      }
       
       const response = await api.get('/attendance', { params });
       setAttendance(response.data);
     } catch (error) {
       console.error('Failed to fetch attendance:', error);
+      toast.error('Failed to fetch attendance data');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleMarkAttendance = async (e) => {
-    e.preventDefault();
+  const fetchSummary = async () => {
     try {
-      await api.post('/attendance', markAttendanceData);
-      setShowMarkAttendance(false);
-      fetchAttendance();
-      setMarkAttendanceData({
-        date: new Date().toISOString().split('T')[0],
-        status: 'Present',
-        checkIn: '',
-        checkOut: ''
+      const firstDay = new Date(selectedYear, selectedMonth, 1).toISOString().split('T')[0];
+      const lastDay = new Date(selectedYear, selectedMonth + 1, 0).toISOString().split('T')[0];
+      const response = await api.get('/attendance/summary', {
+        params: { startDate: firstDay, endDate: lastDay }
       });
+      setSummary(response.data);
     } catch (error) {
-      alert(error.response?.data?.error || 'Failed to mark attendance');
+      console.error('Failed to fetch summary:', error);
     }
   };
 
-  const isEmployee = user?.role === 'Employee';
+  const formatDate = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  };
+
+  const formatTime = (timeString) => {
+    if (!timeString) return '-';
+    return timeString;
+  };
+
+  const formatHours = (hours) => {
+    if (!hours) return '-';
+    const h = Math.floor(hours);
+    const m = Math.floor((hours - h) * 60);
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+  };
+
+  const navigateDate = (direction) => {
+    if (isEmployee) {
+      // Navigate months
+      if (direction === 'prev') {
+        if (selectedMonth === 0) {
+          setSelectedMonth(11);
+          setSelectedYear(selectedYear - 1);
+        } else {
+          setSelectedMonth(selectedMonth - 1);
+        }
+      } else {
+        if (selectedMonth === 11) {
+          setSelectedMonth(0);
+          setSelectedYear(selectedYear + 1);
+        } else {
+          setSelectedMonth(selectedMonth + 1);
+        }
+      }
+    } else {
+      // Navigate days
+      const date = new Date(selectedDate);
+      if (direction === 'prev') {
+        date.setDate(date.getDate() - 1);
+      } else {
+        date.setDate(date.getDate() + 1);
+      }
+      setSelectedDate(date.toISOString().split('T')[0]);
+    }
+  };
+
+  const getMonthName = (month) => {
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 
+                   'July', 'August', 'September', 'October', 'November', 'December'];
+    return months[month];
+  };
+
+  const getCurrentDateDisplay = () => {
+    if (isEmployee) {
+      return `${new Date(selectedYear, selectedMonth, 1).getDate()}, ${getMonthName(selectedMonth)} ${selectedYear}`;
+    } else {
+      const date = new Date(selectedDate);
+      return `${date.getDate()}, ${getMonthName(date.getMonth())} ${date.getFullYear()}`;
+    }
+  };
 
   if (loading) {
     return <div className="text-center py-12">Loading...</div>;
@@ -61,147 +138,156 @@ const Attendance = () => {
   return (
     <div>
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">
-          {isEmployee ? 'My Attendance' : 'Attendance'}
-        </h1>
-        {isEmployee && (
-          <button
-            onClick={() => setShowMarkAttendance(true)}
-            className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700"
-          >
-            Mark Attendance
-          </button>
-        )}
+        <h1 className="text-2xl font-bold text-gray-800">Attendance</h1>
       </div>
 
-      {showMarkAttendance && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-xl font-bold mb-4">Mark Attendance</h2>
-            <form onSubmit={handleMarkAttendance} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Date</label>
+      {/* Date Navigation */}
+      <div className="bg-white rounded-lg shadow-md p-4 mb-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={() => navigateDate('prev')}
+              className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50"
+            >
+              &lt;
+            </button>
+            <div className="flex items-center space-x-2">
+              {isEmployee ? (
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+                  className="px-3 py-1 border border-gray-300 rounded"
+                >
+                  {Array.from({ length: 12 }, (_, i) => (
+                    <option key={i} value={i}>
+                      {getMonthName(i)}
+                    </option>
+                  ))}
+                </select>
+              ) : (
                 <input
                   type="date"
-                  value={markAttendanceData.date}
-                  onChange={(e) => setMarkAttendanceData({ ...markAttendanceData, date: e.target.value })}
-                  required
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="px-3 py-1 border border-gray-300 rounded"
                 />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+              )}
+              {isEmployee && (
                 <select
-                  value={markAttendanceData.status}
-                  onChange={(e) => setMarkAttendanceData({ ...markAttendanceData, status: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                  className="px-3 py-1 border border-gray-300 rounded"
                 >
-                  <option value="Present">Present</option>
-                  <option value="Absent">Absent</option>
-                  <option value="Leave">Leave</option>
+                  {Array.from({ length: 10 }, (_, i) => {
+                    const year = new Date().getFullYear() - 5 + i;
+                    return (
+                      <option key={year} value={year}>
+                        {year}
+                      </option>
+                    );
+                  })}
                 </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Check In</label>
-                <input
-                  type="time"
-                  value={markAttendanceData.checkIn}
-                  onChange={(e) => setMarkAttendanceData({ ...markAttendanceData, checkIn: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Check Out</label>
-                <input
-                  type="time"
-                  value={markAttendanceData.checkOut}
-                  onChange={(e) => setMarkAttendanceData({ ...markAttendanceData, checkOut: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                />
-              </div>
-              <div className="flex justify-end space-x-4">
-                <button
-                  type="button"
-                  onClick={() => setShowMarkAttendance(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
-                >
-                  Submit
-                </button>
-              </div>
-            </form>
+              )}
+              {!isEmployee && (
+                <span className="px-3 py-1 text-gray-700">Day</span>
+              )}
+            </div>
+            <button
+              onClick={() => navigateDate('next')}
+              className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50"
+            >
+              &gt;
+            </button>
+          </div>
+          
+          {!isEmployee && (
+            <input
+              type="text"
+              placeholder="Searchbar"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg"
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Summary Boxes for Employees */}
+      {isEmployee && (
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          <div className="bg-white rounded-lg shadow-md p-4">
+            <p className="text-sm text-gray-600 mb-1">Count of days present</p>
+            <p className="text-2xl font-bold text-gray-800">{summary.presentDays}</p>
+          </div>
+          <div className="bg-white rounded-lg shadow-md p-4">
+            <p className="text-sm text-gray-600 mb-1">Leaves count</p>
+            <p className="text-2xl font-bold text-gray-800">{summary.leaveDays}</p>
+          </div>
+          <div className="bg-white rounded-lg shadow-md p-4">
+            <p className="text-sm text-gray-600 mb-1">Total working days</p>
+            <p className="text-2xl font-bold text-gray-800">{summary.totalWorkingDays}</p>
           </div>
         </div>
       )}
 
+      {/* Attendance Table */}
       <div className="bg-white rounded-lg shadow-md p-6">
-        <div className="mb-4 flex space-x-4">
-          <input
-            type="text"
-            placeholder="Search..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-          />
-          <input
-            type="date"
-            value={dateFilter}
-            onChange={(e) => setDateFilter(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-          />
+        <div className="mb-4">
+          <p className="text-lg font-semibold text-gray-700">{getCurrentDateDisplay()}</p>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b">
-                {!isEmployee && <th className="text-left py-3 px-4 font-semibold">Employee ID</th>}
-                {!isEmployee && <th className="text-left py-3 px-4 font-semibold">Name</th>}
-                <th className="text-left py-3 px-4 font-semibold">Date</th>
-                <th className="text-left py-3 px-4 font-semibold">Status</th>
-                <th className="text-left py-3 px-4 font-semibold">Check In</th>
-                <th className="text-left py-3 px-4 font-semibold">Check Out</th>
-                <th className="text-left py-3 px-4 font-semibold">Total Hours</th>
+                {isEmployee ? (
+                  <>
+                    <th className="text-left py-3 px-4 font-semibold">Date</th>
+                    <th className="text-left py-3 px-4 font-semibold">Check In</th>
+                    <th className="text-left py-3 px-4 font-semibold">Check Out</th>
+                    <th className="text-left py-3 px-4 font-semibold">Work Hours</th>
+                    <th className="text-left py-3 px-4 font-semibold">Extra hours</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="text-left py-3 px-4 font-semibold">Emp</th>
+                    <th className="text-left py-3 px-4 font-semibold">Check In</th>
+                    <th className="text-left py-3 px-4 font-semibold">Check Out</th>
+                    <th className="text-left py-3 px-4 font-semibold">Work Hours</th>
+                    <th className="text-left py-3 px-4 font-semibold">Extra hours</th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody>
               {attendance.length === 0 ? (
                 <tr>
-                  <td colSpan={isEmployee ? 5 : 7} className="text-center py-8 text-gray-500">
+                  <td colSpan={isEmployee ? 5 : 5} className="text-center py-8 text-gray-500">
                     No attendance records found
                   </td>
                 </tr>
               ) : (
                 attendance.map((record) => (
                   <tr key={record.id} className="border-b hover:bg-gray-50">
-                    {!isEmployee && <td className="py-3 px-4">{record.employee_id}</td>}
-                    {!isEmployee && (
-                      <td className="py-3 px-4">
-                        {record.first_name} {record.last_name}
-                      </td>
+                    {isEmployee ? (
+                      <>
+                        <td className="py-3 px-4">{formatDate(record.date)}</td>
+                        <td className="py-3 px-4">{formatTime(record.check_in)}</td>
+                        <td className="py-3 px-4">{formatTime(record.check_out)}</td>
+                        <td className="py-3 px-4">{formatHours(record.total_hours)}</td>
+                        <td className="py-3 px-4">{formatHours(record.extra_hours)}</td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="py-3 px-4">
+                          {record.first_name} {record.last_name}
+                        </td>
+                        <td className="py-3 px-4">{formatTime(record.check_in)}</td>
+                        <td className="py-3 px-4">{formatTime(record.check_out)}</td>
+                        <td className="py-3 px-4">{formatHours(record.total_hours)}</td>
+                        <td className="py-3 px-4">{formatHours(record.extra_hours)}</td>
+                      </>
                     )}
-                    <td className="py-3 px-4">{record.date}</td>
-                    <td className="py-3 px-4">
-                      <span
-                        className={`px-2 py-1 rounded text-sm ${
-                          record.status === 'Present'
-                            ? 'bg-green-100 text-green-800'
-                            : record.status === 'Leave'
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}
-                      >
-                        {record.status}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">{record.check_in || '-'}</td>
-                    <td className="py-3 px-4">{record.check_out || '-'}</td>
-                    <td className="py-3 px-4">{record.total_hours ? `${record.total_hours.toFixed(2)}h` : '-'}</td>
                   </tr>
                 ))
               )}
@@ -214,4 +300,3 @@ const Attendance = () => {
 };
 
 export default Attendance;
-

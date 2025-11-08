@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { toast } from 'react-toastify';
 import api from '../utils/api';
 
 const Settings = () => {
@@ -14,23 +15,51 @@ const Settings = () => {
   const [companyLogoUrl, setCompanyLogoUrl] = useState(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [leaveTypes, setLeaveTypes] = useState([]);
+  const [editingLeaveType, setEditingLeaveType] = useState(null);
+  const [editLeaveTypeData, setEditLeaveTypeData] = useState({
+    maxDays: 0,
+    description: ''
+  });
   const [payrollSettings, setPayrollSettings] = useState({
     pfPercentage: 12,
     professionalTaxAmount: 200,
     hraPercentage: 40
-  });
-  const [showAddLeaveType, setShowAddLeaveType] = useState(false);
-  const [newLeaveType, setNewLeaveType] = useState({
-    name: '',
-    maxDays: 0,
-    description: ''
   });
 
   useEffect(() => {
     fetchCompanyInfo();
     fetchLeaveTypes();
     fetchPayrollSettings();
-  }, []);
+    if (activeTab === 'users') {
+      fetchUsers();
+    }
+  }, [activeTab]);
+
+  const fetchUsers = async () => {
+    setLoadingUsers(true);
+    try {
+      const response = await api.get('/auth/users');
+      setUsers(response.data);
+    } catch (error) {
+      console.error('Failed to fetch users:', error);
+      toast.error('Failed to fetch users');
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  const handleRoleChange = async (userId, newRole) => {
+    setUpdatingRoles({ ...updatingRoles, [userId]: true });
+    try {
+      await api.put(`/auth/users/${userId}/role`, { role: newRole });
+      toast.success('User role updated successfully');
+      fetchUsers(); // Refresh users list
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Failed to update user role');
+    } finally {
+      setUpdatingRoles({ ...updatingRoles, [userId]: false });
+    }
+  };
 
   const fetchCompanyInfo = async () => {
     try {
@@ -98,11 +127,13 @@ const Settings = () => {
 
       setCompanyLogoUrl(response.data.imageUrl);
       setCompanyLogo(null);
-      alert('Company logo uploaded successfully');
+      toast.success('Company logo uploaded successfully');
       fetchCompanyInfo();
+      // Dispatch event to update logo in Layout component
+      window.dispatchEvent(new Event('logoUpdated'));
     } catch (error) {
       console.error('Failed to upload logo:', error);
-      alert('Failed to upload logo');
+      toast.error('Failed to upload logo');
     } finally {
       setUploadingLogo(false);
     }
@@ -112,9 +143,9 @@ const Settings = () => {
     e.preventDefault();
     try {
       await api.put('/settings/company', companyInfo);
-      alert('Company information saved successfully');
+      toast.success('Company information saved successfully');
     } catch (error) {
-      alert('Failed to save company information');
+      toast.error('Failed to save company information');
     }
   };
 
@@ -122,22 +153,39 @@ const Settings = () => {
     e.preventDefault();
     try {
       await api.put('/settings/payroll', payrollSettings);
-      alert('Payroll settings saved successfully');
+      toast.success('Payroll settings saved successfully');
     } catch (error) {
-      alert('Failed to save payroll settings');
+      toast.error('Failed to save payroll settings');
     }
   };
 
-  const handleAddLeaveType = async (e) => {
+  const handleEditLeaveType = (type) => {
+    setEditingLeaveType(type.id);
+    setEditLeaveTypeData({
+      maxDays: type.max_days || 0,
+      description: type.description || ''
+    });
+  };
+
+  const handleSaveEditLeaveType = async (e, id) => {
     e.preventDefault();
     try {
-      await api.post('/settings/leave-types', newLeaveType);
-      setShowAddLeaveType(false);
-      setNewLeaveType({ name: '', maxDays: 0, description: '' });
+      await api.put(`/settings/leave-types/${id}`, {
+        maxDays: editLeaveTypeData.maxDays,
+        description: editLeaveTypeData.description
+      });
+      setEditingLeaveType(null);
+      setEditLeaveTypeData({ maxDays: 0, description: '' });
       fetchLeaveTypes();
+      toast.success('Leave type updated successfully');
     } catch (error) {
-      alert(error.response?.data?.error || 'Failed to add leave type');
+      toast.error(error.response?.data?.error || 'Failed to update leave type');
     }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingLeaveType(null);
+    setEditLeaveTypeData({ maxDays: 0, description: '' });
   };
 
   const handleDeleteLeaveType = async (id) => {
@@ -147,15 +195,22 @@ const Settings = () => {
     try {
       await api.delete(`/settings/leave-types/${id}`);
       fetchLeaveTypes();
+      toast.success('Leave type deleted successfully');
     } catch (error) {
-      alert('Failed to delete leave type');
+      toast.error('Failed to delete leave type');
     }
   };
+
+
+  const [users, setUsers] = useState([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+  const [updatingRoles, setUpdatingRoles] = useState({});
 
   const tabs = [
     { id: 'company', label: 'Company Info' },
     { id: 'leave-types', label: 'Leave Types' },
-    { id: 'payroll', label: 'Payroll Settings' }
+    { id: 'payroll', label: 'Payroll Settings' },
+    { id: 'users', label: 'User Setting' }
   ];
 
   return (
@@ -278,66 +333,12 @@ const Settings = () => {
 
           {activeTab === 'leave-types' && (
             <div>
-              <div className="flex justify-between items-center mb-4">
+              <div className="mb-4">
                 <h2 className="text-lg font-semibold">Leave Types</h2>
-                <button
-                  onClick={() => setShowAddLeaveType(true)}
-                  className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700"
-                >
-                  Add Leave Type
-                </button>
+                <p className="text-sm text-gray-600 mt-2">
+                  System supports only these leave types: Paid time Off, Sick time off, Unpaid Leaves
+                </p>
               </div>
-
-              {showAddLeaveType && (
-                <div className="mb-6 p-4 border rounded-lg">
-                  <form onSubmit={handleAddLeaveType} className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Name *</label>
-                      <input
-                        type="text"
-                        value={newLeaveType.name}
-                        onChange={(e) => setNewLeaveType({ ...newLeaveType, name: e.target.value })}
-                        required
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Max Days</label>
-                      <input
-                        type="number"
-                        value={newLeaveType.maxDays}
-                        onChange={(e) => setNewLeaveType({ ...newLeaveType, maxDays: parseInt(e.target.value) })}
-                        min="0"
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
-                      <textarea
-                        value={newLeaveType.description}
-                        onChange={(e) => setNewLeaveType({ ...newLeaveType, description: e.target.value })}
-                        rows="2"
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                      />
-                    </div>
-                    <div className="flex space-x-4">
-                      <button
-                        type="submit"
-                        className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700"
-                      >
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowAddLeaveType(false)}
-                        className="px-4 py-2 border border-gray-300 rounded-lg"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              )}
 
               <div className="overflow-x-auto">
                 <table className="w-full">
@@ -353,16 +354,58 @@ const Settings = () => {
                     {leaveTypes.map((type) => (
                       <tr key={type.id} className="border-b hover:bg-gray-50">
                         <td className="py-3 px-4">{type.name}</td>
-                        <td className="py-3 px-4">{type.max_days}</td>
-                        <td className="py-3 px-4">{type.description || '-'}</td>
-                        <td className="py-3 px-4">
-                          <button
-                            onClick={() => handleDeleteLeaveType(type.id)}
-                            className="text-red-600 hover:underline"
-                          >
-                            Delete
-                          </button>
-                        </td>
+                        {editingLeaveType === type.id ? (
+                          <>
+                            <td className="py-3 px-4">
+                              <input
+                                type="number"
+                                value={editLeaveTypeData.maxDays}
+                                onChange={(e) => setEditLeaveTypeData({ ...editLeaveTypeData, maxDays: parseInt(e.target.value) || 0 })}
+                                min="0"
+                                className="w-24 px-2 py-1 border border-gray-300 rounded"
+                              />
+                            </td>
+                            <td className="py-3 px-4">
+                              <textarea
+                                value={editLeaveTypeData.description}
+                                onChange={(e) => setEditLeaveTypeData({ ...editLeaveTypeData, description: e.target.value })}
+                                rows="2"
+                                className="w-full px-2 py-1 border border-gray-300 rounded"
+                              />
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="flex space-x-2">
+                                <button
+                                  onClick={(e) => handleSaveEditLeaveType(e, type.id)}
+                                  className="text-green-600 hover:underline text-sm"
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  onClick={handleCancelEdit}
+                                  className="text-gray-600 hover:underline text-sm"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="py-3 px-4">{type.max_days}</td>
+                            <td className="py-3 px-4">{type.description || '-'}</td>
+                            <td className="py-3 px-4">
+                              <div className="flex space-x-3">
+                                <button
+                                  onClick={() => handleEditLeaveType(type)}
+                                  className="text-blue-600 hover:underline text-sm"
+                                >
+                                  Edit
+                                </button>
+                              </div>
+                            </td>
+                          </>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -410,6 +453,84 @@ const Settings = () => {
                 Save
               </button>
             </form>
+          )}
+
+          {activeTab === 'users' && (
+            <div>
+              <div className="mb-4">
+                <p className="text-sm text-gray-600 mb-2">
+                  In the Admin Settings, the administrator can assign user access rights based on each user's role.
+                </p>
+                <p className="text-sm text-gray-600 mb-4">
+                  Access rights can be configured on a module basis, allowing specific permissions for each module.
+                </p>
+              </div>
+
+              {loadingUsers ? (
+                <div className="text-center py-12">Loading users...</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-3 px-4 font-semibold">User name</th>
+                        <th className="text-left py-3 px-4 font-semibold">Login id</th>
+                        <th className="text-left py-3 px-4 font-semibold">Email</th>
+                        <th className="text-left py-3 px-4 font-semibold">Role</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users.length === 0 ? (
+                        <tr>
+                          <td colSpan="4" className="text-center py-8 text-gray-500">
+                            No users found
+                          </td>
+                        </tr>
+                      ) : (
+                        users.map((user) => (
+                          <tr key={user.id} className="border-b hover:bg-gray-50">
+                            <td className="py-3 px-4">
+                              {user.first_name && user.last_name
+                                ? `${user.first_name} ${user.last_name}`
+                                : user.email || 'N/A'}
+                            </td>
+                            <td className="py-3 px-4">{user.login_id || '-'}</td>
+                            <td className="py-3 px-4">{user.email || '-'}</td>
+                            <td className="py-3 px-4">
+                              <select
+                                value={user.role}
+                                onChange={(e) => handleRoleChange(user.id, e.target.value)}
+                                disabled={updatingRoles[user.id]}
+                                className="px-3 py-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 disabled:opacity-50"
+                              >
+                                <option value="Employee">Employee</option>
+                                <option value="HR Officer">HR Officer</option>
+                                <option value="Payroll Officer">Payroll Officer</option>
+                                <option value="Manager">Manager</option>
+                                <option value="Admin">Admin</option>
+                              </select>
+                              {updatingRoles[user.id] && (
+                                <span className="ml-2 text-xs text-gray-500">Updating...</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+                <p className="text-sm text-gray-700">
+                  <strong>Note:</strong> Select user access rights as per their role and responsibilities. 
+                  These access rights define what users are allowed to access and what they are restricted from accessing.
+                </p>
+                <p className="text-sm text-gray-600 mt-2">
+                  Available roles: <strong>Employee</strong> / <strong>Admin</strong> / <strong>HR Officer</strong> / <strong>Payroll Officer</strong> / <strong>Manager</strong>
+                </p>
+              </div>
+            </div>
           )}
         </div>
       </div>
