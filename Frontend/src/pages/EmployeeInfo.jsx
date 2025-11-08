@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { toast } from 'react-toastify';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
@@ -129,10 +130,10 @@ const EmployeeInfo = () => {
 
       setProfileImageUrl(response.data.imageUrl);
       setProfileImage(null);
-      alert('Profile image uploaded successfully');
+      toast.success('Profile image uploaded successfully');
     } catch (error) {
       console.error('Failed to upload image:', error);
-      alert('Failed to upload image');
+      toast.error('Failed to upload image');
     } finally {
       setUploadingImage(false);
     }
@@ -167,16 +168,16 @@ const EmployeeInfo = () => {
             roleUpdated = true;
           } catch (roleError) {
             console.error('Failed to update role:', roleError);
-            alert('Employee updated but role update failed. Please try updating role separately.');
+            toast.warning('Employee updated but role update failed. Please try updating role separately.');
             setLoading(false);
             return;
           }
         }
         
         if (roleUpdated) {
-          alert(`Employee updated successfully! Role changed from ${userRole} to ${formData.role}.`);
+          toast.success(`Employee updated successfully! Role changed from ${userRole} to ${formData.role}.`);
         } else {
-          alert('Employee updated successfully!');
+          toast.success('Employee updated successfully!');
         }
         navigate('/employees');
       } else {
@@ -223,7 +224,7 @@ const EmployeeInfo = () => {
 
         // Show Employee ID, Login ID and Password if generated
         const message = `Employee created successfully!\n\nEmployee ID: ${response.data.employee_id || 'N/A'}\nLogin ID: ${response.data.loginId || 'N/A'}\nPassword: ${response.data.password || 'N/A'}\n\nPlease share these credentials with the employee. They must change password on first login.`;
-        alert(message);
+        toast.success(message, { autoClose: 6000 });
       }
       navigate('/employees');
     } catch (error) {

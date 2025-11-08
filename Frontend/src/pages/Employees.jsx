@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
@@ -45,9 +46,10 @@ const Employees = () => {
 
     try {
       await api.delete(`/employees/${id}`);
+      toast.success('Employee deleted successfully');
       fetchEmployees();
     } catch (error) {
-      alert('Failed to delete employee');
+      toast.error('Failed to delete employee');
     }
   };
 
@@ -59,12 +61,12 @@ const Employees = () => {
     try {
       const response = await api.post(`/employees/${employee.id}/send-credentials`);
       if (response.data.emailSent) {
-        alert('Credentials email sent successfully!');
+        toast.success('Credentials email sent successfully!');
       } else {
-        alert(`Email could not be sent. Please share credentials manually:\n\nLogin ID: ${response.data.loginId}\nPassword: ${response.data.password}`);
+        toast.info(`Email could not be sent. Please share credentials manually:\n\nLogin ID: ${response.data.loginId}\nPassword: ${response.data.password}`);
       }
     } catch (error) {
-      alert(error.response?.data?.error || 'Failed to send credentials email');
+      toast.error(error.response?.data?.error || 'Failed to send credentials email');
     }
   };
 

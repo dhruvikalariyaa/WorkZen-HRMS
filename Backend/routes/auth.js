@@ -1,63 +1,13 @@
 import express from 'express';
-import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { body, validationResult } from 'express-validator';
 import pool from '../config/database.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { generateLoginId, generatePassword, hashPassword, comparePassword } from '../utils/helpers.js';
+import { handleError, handleValidationError } from '../utils/errorHandler.js';
+import { PASSWORD_CONSTANTS } from '../utils/constants.js';
 
 const router = express.Router();
-
-// Generate Login ID based on format: Company initials + Employee name initials + Year + Serial
-const generateLoginId = async (firstName, lastName, hireDate) => {
-  try {
-    // Get company name
-    const companyResult = await pool.query('SELECT company_name FROM company_info LIMIT 1');
-    if (companyResult.rows.length === 0) {
-      throw new Error('Company not registered. Please register company first.');
-    }
-    
-    const companyName = companyResult.rows[0].company_name || 'WORKZEN';
-    
-    // Get company initials (first 2 letters, uppercase)
-    const companyInitials = companyName.substring(0, 2).toUpperCase();
-    
-    // Get employee name initials (first 2 letters of first name + first 2 letters of last name)
-    const firstNameInitials = (firstName || '').substring(0, 2).toUpperCase();
-    const lastNameInitials = (lastName || '').substring(0, 2).toUpperCase();
-    const nameInitials = firstNameInitials + lastNameInitials;
-    
-    // Get year from hire date
-    const year = hireDate ? new Date(hireDate).getFullYear() : new Date().getFullYear();
-    
-    // Get serial number for this year
-    const serialResult = await pool.query(
-      `SELECT COUNT(*) as count 
-       FROM users 
-       WHERE login_id LIKE $1`,
-      [`${companyInitials}${nameInitials}${year}%`]
-    );
-    const serialNumber = parseInt(serialResult.rows[0].count) + 1;
-    
-    // Format: OIJODO20220001
-    const loginId = `${companyInitials}${nameInitials}${year}${String(serialNumber).padStart(4, '0')}`;
-    
-    return loginId;
-  } catch (error) {
-    console.error('Generate Login ID error:', error);
-    throw error;
-  }
-};
-
-// Generate random password
-const generatePassword = () => {
-  const length = 8;
-  const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%';
-  let password = '';
-  for (let i = 0; i < length; i++) {
-    password += charset.charAt(Math.floor(Math.random() * charset.length));
-  }
-  return password;
-};
 
 // Company + Admin Registration (Public - First Time Setup Only)
 router.post('/register', [
@@ -65,13 +15,13 @@ router.post('/register', [
   body('name').notEmpty().trim(),
   body('email').isEmail(),
   body('phone').optional(),
-  body('password').isLength({ min: 6 }),
+  body('password').isLength({ min: PASSWORD_CONSTANTS.MIN_LENGTH }),
   body('confirmPassword').notEmpty(),
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.status(400).json(handleValidationError(errors.array()));
     }
 
     const { companyName, name, email, phone, password, confirmPassword } = req.body;
@@ -113,7 +63,7 @@ router.post('/register', [
     const loginId = await generateLoginId(firstName, lastName, new Date());
 
     // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await hashPassword(password);
 
     // Create Admin user
     const userResult = await pool.query(
@@ -144,8 +94,8 @@ router.post('/register', [
       company: companyResult.rows[0]
     });
   } catch (error) {
-    console.error('Registration error:', error);
-    res.status(500).json({ error: error.message || 'Server error during registration' });
+    const errorResponse = handleError(error, 'Registration');
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -161,7 +111,7 @@ router.post('/create-user', authenticate, authorize('Admin', 'HR Officer'), [
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.status(400).json(handleValidationError(errors.array()));
     }
 
     const { firstName, lastName, email, phone, hireDate, role } = req.body;
@@ -183,7 +133,7 @@ router.post('/create-user', authenticate, authorize('Admin', 'HR Officer'), [
     const generatedPassword = generatePassword();
 
     // Hash password
-    const hashedPassword = await bcrypt.hash(generatedPassword, 10);
+    const hashedPassword = await hashPassword(generatedPassword);
 
     // Create user
     const userResult = await pool.query(
@@ -207,8 +157,8 @@ router.post('/create-user', authenticate, authorize('Admin', 'HR Officer'), [
       note: 'User must change password on first login'
     });
   } catch (error) {
-    console.error('Create user error:', error);
-    res.status(500).json({ error: error.message || 'Server error' });
+    const errorResponse = handleError(error, 'Create user');
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -220,7 +170,7 @@ router.post('/login', [
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.status(400).json(handleValidationError(errors.array()));
     }
 
     const { loginIdOrEmail, password } = req.body;
@@ -238,7 +188,7 @@ router.post('/login', [
     const user = userResult.rows[0];
 
     // Verify password
-    const isValidPassword = await bcrypt.compare(password, user.password);
+    const isValidPassword = await comparePassword(password, user.password);
     if (!isValidPassword) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -269,8 +219,8 @@ router.post('/login', [
       requiresPasswordChange: !user.is_password_changed
     });
   } catch (error) {
-    console.error('Login error:', error);
-    res.status(500).json({ error: 'Server error during login' });
+    const errorResponse = handleError(error, 'Login');
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -283,7 +233,7 @@ router.post('/change-password', authenticate, [
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.status(400).json(handleValidationError(errors.array()));
     }
 
     const { oldPassword, newPassword, confirmPassword } = req.body;
@@ -309,14 +259,14 @@ router.post('/change-password', authenticate, [
       if (!oldPassword) {
         return res.status(400).json({ error: 'Current password is required' });
       }
-      const isValidPassword = await bcrypt.compare(oldPassword, user.password);
+      const isValidPassword = await comparePassword(oldPassword, user.password);
       if (!isValidPassword) {
         return res.status(401).json({ error: 'Current password is incorrect' });
       }
     }
 
     // Hash new password
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    const hashedPassword = await hashPassword(newPassword);
 
     // Update password
     await pool.query(
@@ -329,8 +279,8 @@ router.post('/change-password', authenticate, [
       requiresPasswordChange: false
     });
   } catch (error) {
-    console.error('Change password error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Change password');
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -363,8 +313,8 @@ router.get('/me', authenticate, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Get me error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Get current user');
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -387,8 +337,8 @@ router.get('/users', authenticate, authorize('Admin'), async (req, res) => {
     );
     res.json(result.rows);
   } catch (error) {
-    console.error('Get users error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Get users');
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -399,7 +349,7 @@ router.put('/users/:userId/role', authenticate, authorize('Admin'), [
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.status(400).json(handleValidationError(errors.array()));
     }
 
     const { userId } = req.params;
@@ -434,8 +384,8 @@ router.put('/users/:userId/role', authenticate, authorize('Admin'), [
       user: result.rows[0]
     });
   } catch (error) {
-    console.error('Update user role error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Update user role');
+    res.status(500).json(errorResponse);
   }
 });
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
 
@@ -61,8 +62,9 @@ const Payroll = () => {
         month: new Date().getMonth() + 1,
         year: new Date().getFullYear()
       });
+      toast.success('Payroll generated successfully');
     } catch (error) {
-      alert(error.response?.data?.error || 'Failed to generate payroll');
+      toast.error(error.response?.data?.error || 'Failed to generate payroll');
     }
   };
 
@@ -79,7 +81,7 @@ const Payroll = () => {
         setSelectedPayroll(response.data);
         setShowPayslipModal(true);
       } catch (err) {
-        alert('Failed to generate payslip');
+        toast.error('Failed to generate payslip');
       }
     }
   };

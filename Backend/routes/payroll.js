@@ -2,6 +2,8 @@ import express from 'express';
 import { body, validationResult } from 'express-validator';
 import pool from '../config/database.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { handleError, handleValidationError, handleNotFoundError, handleForbiddenError } from '../utils/errorHandler.js';
+import { PAYROLL_CONSTANTS, PAYROLL_STATUS } from '../utils/constants.js';
 
 const router = express.Router();
 
@@ -21,14 +23,14 @@ const calculatePayroll = async (employeeId, month, year) => {
   // Convert to numbers to ensure proper calculations
   const salaryNum = parseFloat(salary) || 0;
   const basicSalaryNum = parseFloat(basic_salary) || 0;
-  const basicSalary = basicSalaryNum || salaryNum * 0.8;
+  const basicSalary = basicSalaryNum || salaryNum * PAYROLL_CONSTANTS.BASIC_SALARY_PERCENTAGE;
 
   // Get payroll settings
   const settingsResult = await pool.query('SELECT * FROM payroll_settings LIMIT 1');
   const settings = settingsResult.rows[0] || {
-    pf_percentage: 12,
-    professional_tax_amount: 200,
-    hra_percentage: 40
+    pf_percentage: PAYROLL_CONSTANTS.DEFAULT_PF_PERCENTAGE,
+    professional_tax_amount: PAYROLL_CONSTANTS.DEFAULT_PROFESSIONAL_TAX,
+    hra_percentage: PAYROLL_CONSTANTS.DEFAULT_HRA_PERCENTAGE
   };
 
   // Convert settings to numbers
@@ -38,8 +40,8 @@ const calculatePayroll = async (employeeId, month, year) => {
 
   // Calculate allowances
   const hra = parseFloat((basicSalary * (hraPercentage / 100)).toFixed(2));
-  const conveyance = 1600; // Fixed
-  const medicalAllowance = 1250; // Fixed
+  const conveyance = PAYROLL_CONSTANTS.CONVEYANCE_ALLOWANCE; // Fixed
+  const medicalAllowance = PAYROLL_CONSTANTS.MEDICAL_ALLOWANCE; // Fixed
   const otherAllowances = parseFloat((salaryNum - basicSalary - hra - conveyance - medicalAllowance).toFixed(2));
 
   // Calculate deductions
@@ -72,7 +74,7 @@ const calculatePayroll = async (employeeId, month, year) => {
 
   // Adjust salary based on attendance (if needed)
   // For now, we'll use full salary, but you can adjust based on business logic
-  const workingDays = 30; // Assuming 30 days in a month
+  const workingDays = PAYROLL_CONSTANTS.DEFAULT_WORKING_DAYS_PER_MONTH;
   const actualWorkingDays = parseInt(present_days) + parseInt(leave_days);
   const adjustedNetSalary = parseFloat(((netSalary / workingDays) * actualWorkingDays).toFixed(2));
 
@@ -138,8 +140,8 @@ router.get('/', authenticate, authorize('Admin', 'Payroll Officer'), async (req,
     const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (error) {
-    console.error('Get payroll error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Get payroll');
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -152,7 +154,7 @@ router.post('/generate', authenticate, authorize('Admin', 'Payroll Officer'), [
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.status(400).json(handleValidationError(errors.array()));
     }
 
     const { employeeId, month, year } = req.body;
@@ -176,7 +178,7 @@ router.post('/generate', authenticate, authorize('Admin', 'Payroll Officer'), [
         employee_id, month, year, gross_salary, basic_salary,
         hra, conveyance, medical_allowance, other_allowances,
         pf, professional_tax, income_tax, loan_deduction, other_deductions, total_deductions, net_salary, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'Processed')
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
       RETURNING *`,
       [
         parseInt(employeeId), 
@@ -194,14 +196,15 @@ router.post('/generate', authenticate, authorize('Admin', 'Payroll Officer'), [
         parseFloat(payrollData.loanDeduction),
         parseFloat(payrollData.otherDeductions), 
         parseFloat(payrollData.totalDeductions), 
-        parseFloat(payrollData.netSalary)
+        parseFloat(payrollData.netSalary),
+        PAYROLL_STATUS.PROCESSED
       ]
     );
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    console.error('Generate payroll error:', error);
-    res.status(500).json({ error: error.message || 'Server error' });
+    const errorResponse = handleError(error, 'Generate payroll');
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -212,7 +215,7 @@ router.post('/payslip', authenticate, [
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.status(400).json(handleValidationError(errors.array()));
     }
 
     const { payrollId } = req.body;
@@ -228,7 +231,7 @@ router.post('/payslip', authenticate, [
     );
 
     if (payrollResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Payroll not found' });
+      return res.status(404).json(handleNotFoundError('Payroll'));
     }
 
     const payroll = payrollResult.rows[0];
@@ -240,10 +243,10 @@ router.post('/payslip', authenticate, [
         [req.user.id]
       );
       if (employeeResult.rows.length === 0 || employeeResult.rows[0].id !== payroll.employee_id) {
-        return res.status(403).json({ error: 'Forbidden' });
+        return res.status(403).json(handleForbiddenError());
       }
     } else if (!['Admin', 'Payroll Officer'].includes(req.user.role)) {
-      return res.status(403).json({ error: 'Forbidden' });
+      return res.status(403).json(handleForbiddenError());
     }
 
     // Create payslip record
@@ -260,8 +263,8 @@ router.post('/payslip', authenticate, [
       payroll: payroll
     });
   } catch (error) {
-    console.error('Generate payslip error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Generate payslip');
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -281,7 +284,7 @@ router.get('/payslip/:payrollId', authenticate, async (req, res) => {
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Payslip not found' });
+      return res.status(404).json(handleNotFoundError('Payslip'));
     }
 
     const payroll = result.rows[0];
@@ -293,14 +296,14 @@ router.get('/payslip/:payrollId', authenticate, async (req, res) => {
         [req.user.id]
       );
       if (employeeResult.rows.length === 0 || employeeResult.rows[0].id !== payroll.employee_id) {
-        return res.status(403).json({ error: 'Forbidden' });
+        return res.status(403).json(handleForbiddenError());
       }
     }
 
     res.json(payroll);
   } catch (error) {
-    console.error('Get payslip error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Get payslip');
+    res.status(500).json(errorResponse);
   }
 });
 
