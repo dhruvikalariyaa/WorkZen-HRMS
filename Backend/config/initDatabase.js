@@ -33,7 +33,6 @@ const initDatabase = async () => {
         position VARCHAR(100),
         hire_date DATE,
         salary DECIMAL(10, 2),
-        basic_salary DECIMAL(10, 2),
         profile_image_url TEXT,
         nationality VARCHAR(100),
         marital_status VARCHAR(20),
@@ -102,25 +101,116 @@ const initDatabase = async () => {
         employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
         month INTEGER NOT NULL,
         year INTEGER NOT NULL,
+        payrun_id VARCHAR(100),
         gross_salary DECIMAL(10, 2) NOT NULL,
         basic_salary DECIMAL(10, 2) NOT NULL,
         hra DECIMAL(10, 2) DEFAULT 0,
         conveyance DECIMAL(10, 2) DEFAULT 0,
         medical_allowance DECIMAL(10, 2) DEFAULT 0,
+        standard_allowance DECIMAL(10, 2) DEFAULT 0,
+        performance_bonus DECIMAL(10, 2) DEFAULT 0,
+        leave_travel_allowance DECIMAL(10, 2) DEFAULT 0,
+        food_allowance DECIMAL(10, 2) DEFAULT 0,
         other_allowances DECIMAL(10, 2) DEFAULT 0,
-        pf DECIMAL(10, 2) DEFAULT 0,
+        pf_employee DECIMAL(10, 2) DEFAULT 0,
+        pf_employer DECIMAL(10, 2) DEFAULT 0,
         professional_tax DECIMAL(10, 2) DEFAULT 0,
         income_tax DECIMAL(10, 2) DEFAULT 0,
+        tds_deduction DECIMAL(10, 2) DEFAULT 0,
         loan_deduction DECIMAL(10, 2) DEFAULT 0,
         other_deductions DECIMAL(10, 2) DEFAULT 0,
         total_deductions DECIMAL(10, 2) DEFAULT 0,
         net_salary DECIMAL(10, 2) NOT NULL,
         status VARCHAR(20) NOT NULL DEFAULT 'Pending',
+        is_validated BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(employee_id, month, year)
       )
     `);
+
+    // Add new columns to existing payroll table if they don't exist
+    await pool.query(`
+      ALTER TABLE payroll 
+      ADD COLUMN IF NOT EXISTS payrun_id VARCHAR(100),
+      ADD COLUMN IF NOT EXISTS is_validated BOOLEAN DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS standard_allowance DECIMAL(10, 2) DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS performance_bonus DECIMAL(10, 2) DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS leave_travel_allowance DECIMAL(10, 2) DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS food_allowance DECIMAL(10, 2) DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS pf_employee DECIMAL(10, 2) DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS pf_employer DECIMAL(10, 2) DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS tds_deduction DECIMAL(10, 2) DEFAULT 0
+    `);
+
+    // Fix payrun_id column type if it exists as INTEGER (migration)
+    try {
+      const columnCheck = await pool.query(`
+        SELECT data_type 
+        FROM information_schema.columns 
+        WHERE table_name = 'payroll' 
+        AND column_name = 'payrun_id'
+      `);
+      
+      if (columnCheck.rows.length > 0) {
+        const currentType = columnCheck.rows[0].data_type;
+        console.log(`Current payrun_id column type: ${currentType}`);
+        
+        if (currentType === 'integer') {
+          console.log('Converting payrun_id from INTEGER to VARCHAR(100)...');
+          
+          // Check for foreign key constraints on payrun_id
+          const fkCheck = await pool.query(`
+            SELECT constraint_name 
+            FROM information_schema.table_constraints 
+            WHERE table_name = 'payroll' 
+            AND constraint_type = 'FOREIGN KEY'
+            AND constraint_name LIKE '%payrun_id%'
+          `);
+          
+          // Drop foreign key constraints if they exist
+          for (const fk of fkCheck.rows) {
+            console.log(`Dropping foreign key constraint: ${fk.constraint_name}`);
+            await pool.query(`ALTER TABLE payroll DROP CONSTRAINT IF EXISTS ${fk.constraint_name}`);
+          }
+          
+          // Convert integer column to VARCHAR using USING clause
+          await pool.query(`
+            ALTER TABLE payroll 
+            ALTER COLUMN payrun_id TYPE VARCHAR(100) 
+            USING CASE 
+              WHEN payrun_id IS NULL THEN NULL 
+              ELSE payrun_id::text 
+            END
+          `);
+          
+          console.log('✅ payrun_id column successfully converted to VARCHAR(100)');
+        } else if (currentType === 'character varying' || currentType === 'varchar') {
+          console.log('✅ payrun_id column is already VARCHAR');
+        }
+      } else {
+        console.log('payrun_id column does not exist yet (will be created as VARCHAR)');
+      }
+    } catch (error) {
+      console.error('❌ Error during payrun_id column migration:', error.message);
+      console.error('You may need to manually run the SQL commands in Backend/fix_payrun_id.sql');
+    }
+
+    // Rename pf to pf_employee if pf_employee doesn't exist and pf does
+    try {
+      await pool.query(`
+        DO $$
+        BEGIN
+          IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payroll' AND column_name='pf')
+             AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='payroll' AND column_name='pf_employee') THEN
+            ALTER TABLE payroll RENAME COLUMN pf TO pf_employee;
+          END IF;
+        END $$;
+      `);
+    } catch (error) {
+      // Ignore error if column doesn't exist or already renamed
+      console.log('Note: pf column migration skipped (may already be migrated)');
+    }
 
     await pool.query(`
       CREATE TABLE IF NOT EXISTS payslips (
@@ -130,6 +220,27 @@ const initDatabase = async () => {
         month INTEGER NOT NULL,
         year INTEGER NOT NULL,
         generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create worked_days table to store attendance breakdown for payroll
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS worked_days (
+        id SERIAL PRIMARY KEY,
+        payroll_id INTEGER REFERENCES payroll(id) ON DELETE CASCADE,
+        employee_id INTEGER REFERENCES employees(id) ON DELETE CASCADE,
+        attendance_days DECIMAL(5, 2) DEFAULT 0,
+        attendance_amount DECIMAL(10, 2) DEFAULT 0,
+        paid_time_off_days DECIMAL(5, 2) DEFAULT 0,
+        paid_time_off_amount DECIMAL(10, 2) DEFAULT 0,
+        unpaid_time_off_days DECIMAL(5, 2) DEFAULT 0,
+        unpaid_time_off_amount DECIMAL(10, 2) DEFAULT 0,
+        total_payable_days DECIMAL(5, 2) DEFAULT 0,
+        total_payable_amount DECIMAL(10, 2) DEFAULT 0,
+        working_days_per_week INTEGER DEFAULT 5,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(payroll_id)
       )
     `);
 
@@ -227,6 +338,7 @@ const initDatabase = async () => {
         performance_bonus_percentage DECIMAL(5, 2),
         leave_travel_allowance DECIMAL(10, 2),
         leave_travel_allowance_percentage DECIMAL(5, 2),
+        food_allowance DECIMAL(10, 2),
         fixed_allowance DECIMAL(10, 2),
         fixed_allowance_percentage DECIMAL(5, 2),
         pf_employee DECIMAL(10, 2),
@@ -237,6 +349,12 @@ const initDatabase = async () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
+    `);
+
+    // Add food_allowance column if it doesn't exist
+    await pool.query(`
+      ALTER TABLE salary_info 
+      ADD COLUMN IF NOT EXISTS food_allowance DECIMAL(10, 2) DEFAULT 0
     `);
 
     // Create employee_skills table

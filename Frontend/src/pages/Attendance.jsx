@@ -9,8 +9,11 @@ const Attendance = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   
-  // For Admin/HR/Payroll: daily view
+  // For Admin/HR/Payroll: daily view or monthly view
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [adminViewMode, setAdminViewMode] = useState('day'); // 'day' or 'month'
+  const [adminSelectedMonth, setAdminSelectedMonth] = useState(new Date().getMonth());
+  const [adminSelectedYear, setAdminSelectedYear] = useState(new Date().getFullYear());
   
   // For Employees: monthly view
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
@@ -31,7 +34,7 @@ const Attendance = () => {
     if (canClockInOut && (isEmployee || viewMode === 'my')) {
       fetchSummary();
     }
-  }, [selectedDate, selectedMonth, selectedYear, canClockInOut, viewMode]);
+  }, [selectedDate, selectedMonth, selectedYear, canClockInOut, viewMode, adminViewMode, adminSelectedMonth, adminSelectedYear]);
 
   const fetchAttendance = async () => {
     try {
@@ -45,8 +48,17 @@ const Attendance = () => {
         params.startDate = firstDay;
         params.endDate = lastDay;
       } else {
-        // For admin/HR/Payroll viewing all: get daily data
-        params.date = selectedDate;
+        // For admin/HR/Payroll viewing all: get daily or monthly data based on view mode
+        if (adminViewMode === 'month') {
+          // Monthly view for admin
+          const firstDay = new Date(adminSelectedYear, adminSelectedMonth, 1).toISOString().split('T')[0];
+          const lastDay = new Date(adminSelectedYear, adminSelectedMonth + 1, 0).toISOString().split('T')[0];
+          params.startDate = firstDay;
+          params.endDate = lastDay;
+        } else {
+          // Daily view for admin
+          params.date = selectedDate;
+        }
         if (searchTerm) {
           params.search = searchTerm;
         }
@@ -111,14 +123,34 @@ const Attendance = () => {
         }
       }
     } else {
-      // Navigate days
-      const date = new Date(selectedDate);
-      if (direction === 'prev') {
-        date.setDate(date.getDate() - 1);
+      // For admin: navigate based on view mode
+      if (adminViewMode === 'month') {
+        // Navigate months
+        if (direction === 'prev') {
+          if (adminSelectedMonth === 0) {
+            setAdminSelectedMonth(11);
+            setAdminSelectedYear(adminSelectedYear - 1);
+          } else {
+            setAdminSelectedMonth(adminSelectedMonth - 1);
+          }
+        } else {
+          if (adminSelectedMonth === 11) {
+            setAdminSelectedMonth(0);
+            setAdminSelectedYear(adminSelectedYear + 1);
+          } else {
+            setAdminSelectedMonth(adminSelectedMonth + 1);
+          }
+        }
       } else {
-        date.setDate(date.getDate() + 1);
+        // Navigate days
+        const date = new Date(selectedDate);
+        if (direction === 'prev') {
+          date.setDate(date.getDate() - 1);
+        } else {
+          date.setDate(date.getDate() + 1);
+        }
+        setSelectedDate(date.toISOString().split('T')[0]);
       }
-      setSelectedDate(date.toISOString().split('T')[0]);
     }
   };
 
@@ -132,8 +164,12 @@ const Attendance = () => {
     if (isEmployee || (isHRorPayroll && viewMode === 'my')) {
       return `${new Date(selectedYear, selectedMonth, 1).getDate()}, ${getMonthName(selectedMonth)} ${selectedYear}`;
     } else {
-      const date = new Date(selectedDate);
-      return `${date.getDate()}, ${getMonthName(date.getMonth())} ${date.getFullYear()}`;
+      if (adminViewMode === 'month') {
+        return `${getMonthName(adminSelectedMonth)} ${adminSelectedYear}`;
+      } else {
+        const date = new Date(selectedDate);
+        return `${date.getDate()}, ${getMonthName(date.getMonth())} ${date.getFullYear()}`;
+      }
     }
   };
 
@@ -244,13 +280,69 @@ const Attendance = () => {
                 </>
               ) : (
                 <>
-                  <input
-                    type="date"
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    className="px-3 py-1 border border-gray-300 rounded"
-                  />
-                  <span className="px-3 py-1 text-gray-700">Day</span>
+                  {/* View Mode Toggle for Admin */}
+                  <div className="flex items-center space-x-2 border border-gray-300 rounded">
+                    <button
+                      onClick={() => setAdminViewMode('day')}
+                      className={`px-3 py-1 rounded-l ${
+                        adminViewMode === 'day'
+                          ? 'bg-purple-600 text-white'
+                          : 'bg-white text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      Day
+                    </button>
+                    <button
+                      onClick={() => setAdminViewMode('month')}
+                      className={`px-3 py-1 rounded-r ${
+                        adminViewMode === 'month'
+                          ? 'bg-purple-600 text-white'
+                          : 'bg-white text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      Month
+                    </button>
+                  </div>
+                  
+                  {adminViewMode === 'month' ? (
+                    <>
+                      <select
+                        value={adminSelectedMonth}
+                        onChange={(e) => setAdminSelectedMonth(parseInt(e.target.value))}
+                        className="px-3 py-1 border border-gray-300 rounded"
+                      >
+                        {Array.from({ length: 12 }, (_, i) => (
+                          <option key={i} value={i}>
+                            {getMonthName(i)}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={adminSelectedYear}
+                        onChange={(e) => setAdminSelectedYear(parseInt(e.target.value))}
+                        className="px-3 py-1 border border-gray-300 rounded"
+                      >
+                        {Array.from({ length: 10 }, (_, i) => {
+                          const year = new Date().getFullYear() - 5 + i;
+                          return (
+                            <option key={year} value={year}>
+                              {year}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </>
+                  ) : (
+                    <>
+                      <input
+                        type="date"
+                        value={selectedDate}
+                        onChange={(e) => setSelectedDate(e.target.value)}
+                        className="px-3 py-1 border border-gray-300 rounded"
+                      />
+                      <span className="px-3 py-1 text-gray-700">Day</span>
+                    </>
+                  )}
                 </>
               )}
             </div>
@@ -313,6 +405,9 @@ const Attendance = () => {
                 ) : (
                   <>
                     <th className="text-left py-3 px-4 font-semibold">Emp</th>
+                    {adminViewMode === 'month' && (
+                      <th className="text-left py-3 px-4 font-semibold">Date</th>
+                    )}
                     <th className="text-left py-3 px-4 font-semibold">Check In</th>
                     <th className="text-left py-3 px-4 font-semibold">Check Out</th>
                     <th className="text-left py-3 px-4 font-semibold">Work Hours</th>
@@ -324,7 +419,7 @@ const Attendance = () => {
             <tbody>
               {attendance.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="text-center py-8 text-gray-500">
+                  <td colSpan={(!isEmployee && !(isHRorPayroll && viewMode === 'my') && adminViewMode === 'month') ? 6 : 5} className="text-center py-8 text-gray-500">
                     No attendance records found
                   </td>
                 </tr>
@@ -344,6 +439,9 @@ const Attendance = () => {
                         <td className="py-3 px-4">
                           {record.first_name} {record.last_name}
                         </td>
+                        {adminViewMode === 'month' && (
+                          <td className="py-3 px-4">{formatDate(record.date)}</td>
+                        )}
                         <td className="py-3 px-4">{formatTime(record.check_in)}</td>
                         <td className="py-3 px-4">{formatTime(record.check_out)}</td>
                         <td className="py-3 px-4">{formatHours(record.total_hours)}</td>

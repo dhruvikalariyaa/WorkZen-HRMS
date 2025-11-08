@@ -25,7 +25,7 @@ const Profile = () => {
     phoneNumber: '',
     company: '',
     department: '',
-    manager: '',
+    managerId: '',
   });
 
   const [privateInfo, setPrivateInfo] = useState({
@@ -93,6 +93,7 @@ const Profile = () => {
         setSelectedEmployeeId(targetEmployeeId);
         fetchProfileData(targetEmployeeId);
         
+        // Always fetch employees for manager dropdown (if Admin/HR Officer)
         if (['Admin', 'HR Officer'].includes(user?.role)) {
           fetchEmployees();
         }
@@ -102,6 +103,7 @@ const Profile = () => {
         setSelectedEmployeeId(targetEmployeeId);
         fetchProfileData(targetEmployeeId);
         
+        // Always fetch employees for manager dropdown (if Admin/HR Officer)
         if (['Admin', 'HR Officer'].includes(user?.role)) {
           fetchEmployees();
         }
@@ -138,7 +140,7 @@ const Profile = () => {
         phoneNumber: data.phone_number || '',
         company: data.company_name || '',
         department: data.department || '',
-        manager: data.manager_id ? `${data.manager_first_name || ''} ${data.manager_last_name || ''}`.trim() : '',
+        managerId: data.manager_id || '',
       });
 
       // Set private info
@@ -266,11 +268,18 @@ const Profile = () => {
 
     setSaving(true);
     try {
-      await api.put(`/profile/${selectedEmployeeId}`, {
+      const updateData = {
         firstName: basicInfo.firstName,
         lastName: basicInfo.lastName,
         phoneNumber: basicInfo.phoneNumber,
-      });
+      };
+      
+      // Only include managerId if user has permission (Admin/HR Officer)
+      if (['Admin', 'HR Officer'].includes(user?.role)) {
+        updateData.managerId = basicInfo.managerId || null;
+      }
+      
+      await api.put(`/profile/${selectedEmployeeId}`, updateData);
       toast.success('Basic information saved successfully');
       fetchProfileData(selectedEmployeeId);
     } catch (error) {
@@ -1135,14 +1144,48 @@ const Profile = () => {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Manager</label>
-              <input
-                type="text"
-                value={basicInfo.manager}
-                disabled
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
-              />
+              {['Admin', 'HR Officer'].includes(user?.role) ? (
+                <select
+                  value={basicInfo.managerId || ''}
+                  onChange={(e) => setBasicInfo({ ...basicInfo, managerId: e.target.value || '' })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Select Manager</option>
+                  {employees
+                    .filter(emp => emp.id !== selectedEmployeeId) // Exclude current employee
+                    .map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.employee_id} - {emp.first_name} {emp.last_name}
+                      </option>
+                    ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={
+                    profileData?.manager_first_name && profileData?.manager_last_name
+                      ? `${profileData.manager_first_name} ${profileData.manager_last_name}`
+                      : 'No Manager'
+                  }
+                  disabled
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                />
+              )}
             </div>
           </div>
+          
+          {/* Save Button for Basic Info */}
+          {(selectedEmployeeId || user?.employee?.id) && (
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={handleSaveBasicInfo}
+                disabled={saving}
+                className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {saving ? 'Saving...' : 'Save Basic Info'}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Tabs */}

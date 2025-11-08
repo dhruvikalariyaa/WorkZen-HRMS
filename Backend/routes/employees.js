@@ -181,11 +181,11 @@ router.post('/', authenticate, authorize('Admin', 'HR Officer'), [
 
     const {
       employeeId, firstName, lastName, email, phoneNumber, dateOfBirth,
-      gender, address, department, position, hireDate, salary
+      gender, address, department, position, hireDate, salary, managerId
     } = req.body;
 
     // Auto-generate Employee ID (always generate, ignore if provided)
-    const finalEmployeeId = await generateEmployeeId();
+    let finalEmployeeId = await generateEmployeeId();
 
     // Check if employee ID already exists
     const existingEmployee = await pool.query(
@@ -223,8 +223,13 @@ router.post('/', authenticate, authorize('Admin', 'HR Officer'), [
       }
     }
 
-    // Calculate basic salary (80% of total salary)
-    const basicSalary = salary ? salary * PAYROLL_CONSTANTS.BASIC_SALARY_PERCENTAGE : 0;
+    // Validate manager if provided
+    if (managerId) {
+      const managerCheck = await pool.query('SELECT id FROM employees WHERE id = $1', [managerId]);
+      if (managerCheck.rows.length === 0) {
+        return res.status(400).json({ error: 'Selected manager does not exist' });
+      }
+    }
 
     // Generate Login ID and Password for user account
     const loginId = await generateLoginId(firstName, lastName, hireDate || new Date());
@@ -257,13 +262,13 @@ router.post('/', authenticate, authorize('Admin', 'HR Officer'), [
       `INSERT INTO employees (
         user_id, employee_id, first_name, last_name, email, phone_number,
         date_of_birth, gender, address, department, position,
-        hire_date, salary, basic_salary
+        hire_date, salary, manager_id
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING *`,
       [
         userId, finalEmployeeId, firstName, lastName, finalEmail, phoneNumber,
         dateOfBirth, gender, address, department, position,
-        hireDate, salary, basicSalary
+        hireDate, salary, managerId || null
       ]
     );
 
@@ -360,7 +365,7 @@ router.put('/:id', authenticate, authorize('Admin', 'HR Officer'), [
 
     const {
       firstName, lastName, phoneNumber, dateOfBirth, gender, address,
-      department, position, hireDate, salary
+      department, position, hireDate, salary, managerId
     } = req.body;
 
     const updateFields = [];
@@ -395,19 +400,105 @@ router.put('/:id', authenticate, authorize('Admin', 'HR Officer'), [
       updateFields.push(`department = $${paramCount++}`);
       values.push(department);
     }
-     if (position !== undefined && ['Admin', 'HR Officer'].includes(req.user.role)) {
-       updateFields.push(`position = $${paramCount++}`);
-       values.push(position);
-     }
-     if (hireDate && ['Admin', 'HR Officer'].includes(req.user.role)) {
-       updateFields.push(`hire_date = $${paramCount++}`);
-       values.push(hireDate);
-     }
+    if (position !== undefined && ['Admin', 'HR Officer'].includes(req.user.role)) {
+      updateFields.push(`position = $${paramCount++}`);
+      values.push(position);
+    }
+    if (hireDate && ['Admin', 'HR Officer'].includes(req.user.role)) {
+      updateFields.push(`hire_date = $${paramCount++}`);
+      values.push(hireDate);
+    }
     if (salary && ['Admin', 'HR Officer'].includes(req.user.role)) {
       updateFields.push(`salary = $${paramCount++}`);
       values.push(salary);
-      updateFields.push(`basic_salary = $${paramCount++}`);
-      values.push(salary * PAYROLL_CONSTANTS.BASIC_SALARY_PERCENTAGE);
+      
+      // Also update salary_info.monthly_wage if salary_info exists, or create it if it doesn't
+      const monthlyWage = parseFloat(salary);
+      if (monthlyWage > 0) {
+        try {
+          // Check if salary_info exists
+          const salaryInfoCheck = await pool.query(
+            'SELECT id FROM salary_info WHERE employee_id = $1',
+            [id]
+          );
+          
+          if (salaryInfoCheck.rows.length > 0) {
+            // Update existing salary_info
+            const yearlyWage = monthlyWage * 12;
+            await pool.query(
+              `UPDATE salary_info 
+               SET monthly_wage = $1, yearly_wage = $2, updated_at = CURRENT_TIMESTAMP
+               WHERE employee_id = $3`,
+              [monthlyWage, yearlyWage, id]
+            );
+          } else {
+            // Create new salary_info with default calculations
+            const yearlyWage = monthlyWage * 12;
+            const basicSalaryPercent = 60;
+            const basicSalary = parseFloat((monthlyWage * (basicSalaryPercent / 100)).toFixed(2));
+            const hraPercent = 10;
+            const hra = parseFloat((basicSalary * (hraPercent / 100)).toFixed(2));
+            const standardAllowancePercent = 0.5;
+            const standardAllowance = parseFloat((monthlyWage * (standardAllowancePercent / 100)).toFixed(2));
+            const perfBonusPercent = 8.33;
+            const performanceBonus = parseFloat((basicSalary * (perfBonusPercent / 100)).toFixed(2));
+            const ltaPercent = 8.33;
+            const leaveTravelAllowance = parseFloat((basicSalary * (ltaPercent / 100)).toFixed(2));
+            const totalComponents = basicSalary + hra + standardAllowance + performanceBonus + leaveTravelAllowance;
+            const fixedAllowance = parseFloat((monthlyWage - totalComponents).toFixed(2));
+            const fixedAllowancePercentage = parseFloat(((fixedAllowance / monthlyWage) * 100).toFixed(2));
+            const pfEmpPercent = 12;
+            const pfEmployee = parseFloat((basicSalary * (pfEmpPercent / 100)).toFixed(2));
+            const pfEmployer = parseFloat((basicSalary * (pfEmpPercent / 100)).toFixed(2));
+            const profTax = 200;
+            
+            await pool.query(
+              `INSERT INTO salary_info (
+                employee_id, wage_type, monthly_wage, yearly_wage,
+                basic_salary, basic_salary_percentage,
+                hra, hra_percentage,
+                standard_allowance, standard_allowance_percentage,
+                performance_bonus, performance_bonus_percentage,
+                leave_travel_allowance, leave_travel_allowance_percentage,
+                fixed_allowance, fixed_allowance_percentage,
+                pf_employee, pf_employee_percentage,
+                pf_employer, pf_employer_percentage,
+                professional_tax
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
+              [
+                id, 'Fixed', monthlyWage, yearlyWage,
+                basicSalary, basicSalaryPercent,
+                hra, hraPercent,
+                standardAllowance, standardAllowancePercent,
+                performanceBonus, perfBonusPercent,
+                leaveTravelAllowance, ltaPercent,
+                fixedAllowance, fixedAllowancePercentage,
+                pfEmployee, pfEmpPercent,
+                pfEmployer, pfEmpPercent,
+                profTax
+              ]
+            );
+          }
+        } catch (salaryError) {
+          // Log error but don't fail employee update
+          console.error('Error updating/creating salary_info:', salaryError);
+        }
+      }
+    }
+    if (managerId !== undefined && ['Admin', 'HR Officer'].includes(req.user.role)) {
+      // Validate that managerId is not the same as employee id (can't be own manager)
+      if (managerId && parseInt(managerId) === parseInt(id)) {
+        return res.status(400).json({ error: 'Employee cannot be their own manager' });
+      }
+      // Validate manager exists
+      if (managerId) {
+        const managerCheck = await pool.query('SELECT id FROM employees WHERE id = $1', [managerId]);
+        if (managerCheck.rows.length === 0) {
+          return res.status(400).json({ error: 'Selected manager does not exist' });
+        }
+      }
+      updateFields.push(`manager_id = $${paramCount++}`);
+      values.push(managerId || null);
     }
 
     updateFields.push(`updated_at = CURRENT_TIMESTAMP`);
@@ -434,17 +525,28 @@ router.delete('/:id', authenticate, authorize('Admin', 'HR Officer'), async (req
   try {
     const { id } = req.params;
 
-    const result = await pool.query(
-      'DELETE FROM employees WHERE id = $1 RETURNING user_id',
+    // Check if employee exists
+    const employeeCheck = await pool.query(
+      'SELECT id, user_id FROM employees WHERE id = $1',
       [id]
     );
 
-    if (result.rows.length === 0) {
+    if (employeeCheck.rows.length === 0) {
       return res.status(404).json({ error: 'Employee not found' });
     }
 
+    // Before deleting, set manager_id to NULL for all employees who have this employee as their manager
+    // This prevents foreign key constraint violation
+    await pool.query(
+      'UPDATE employees SET manager_id = NULL WHERE manager_id = $1',
+      [id]
+    );
+
+    // Delete the employee
+    await pool.query('DELETE FROM employees WHERE id = $1', [id]);
+
     // Delete associated user
-    await pool.query('DELETE FROM users WHERE id = $1', [result.rows[0].user_id]);
+    await pool.query('DELETE FROM users WHERE id = $1', [employeeCheck.rows[0].user_id]);
 
     res.json({ message: 'Employee deleted successfully' });
   } catch (error) {
