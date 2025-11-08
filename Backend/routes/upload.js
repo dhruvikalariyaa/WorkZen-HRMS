@@ -1,6 +1,6 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
-import { upload, deleteImage, extractPublicId } from '../config/cloudinary.js';
+import { upload, uploadDocument, deleteImage, extractPublicId } from '../config/cloudinary.js';
 import { authenticate, authorize } from '../middleware/auth.js';
 import pool from '../config/database.js';
 
@@ -127,6 +127,26 @@ router.post('/company/logo', upload.single('image'), async (req, res) => {
   } catch (error) {
     console.error('Upload company logo error:', error);
     res.status(500).json({ error: 'Failed to upload company logo' });
+  }
+});
+
+// Upload document (PDF or image) - for leave attachments
+router.post('/document', authenticate, uploadDocument.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file provided' });
+    }
+
+    res.json({
+      success: true,
+      fileUrl: req.file.path,
+      publicId: req.file.filename,
+      fileName: req.file.originalname,
+      fileType: req.file.mimetype
+    });
+  } catch (error) {
+    console.error('Upload document error:', error);
+    res.status(500).json({ error: error.message || 'Failed to upload document' });
   }
 });
 

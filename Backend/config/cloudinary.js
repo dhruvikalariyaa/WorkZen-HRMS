@@ -25,7 +25,23 @@ const storage = new CloudinaryStorage({
   }
 });
 
-// Create multer upload middleware
+// Configure storage for documents (PDFs and images)
+const documentStorage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: async (req, file) => {
+    // Determine resource type based on file mimetype
+    const isPDF = file.mimetype === 'application/pdf' || file.originalname.toLowerCase().endsWith('.pdf');
+    
+    return {
+      folder: 'workzen-hrms/documents',
+      allowed_formats: isPDF ? ['pdf'] : ['jpg', 'jpeg', 'png', 'gif', 'webp'],
+      resource_type: isPDF ? 'raw' : 'image', // PDFs as raw, images as image
+      public_id: `${Date.now()}-${Math.round(Math.random() * 1E9)}`
+    };
+  }
+});
+
+// Create multer upload middleware for images only
 export const upload = multer({ 
   storage: storage,
   limits: {
@@ -40,6 +56,25 @@ export const upload = multer({
       return cb(null, true);
     } else {
       cb(new Error('Only image files are allowed!'));
+    }
+  }
+});
+
+// Create multer upload middleware for documents (PDFs and images)
+export const uploadDocument = multer({ 
+  storage: documentStorage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit for documents
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|gif|webp|pdf/;
+    const extname = allowedTypes.test(file.originalname.toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype) || file.mimetype === 'application/pdf';
+
+    if (extname && (mimetype || file.mimetype === 'application/pdf')) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Only PDF and image files are allowed!'));
     }
   }
 });
