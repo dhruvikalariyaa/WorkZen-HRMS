@@ -1,6 +1,9 @@
 import express from 'express';
 import pool from '../config/database.js';
 import { authenticate } from '../middleware/auth.js';
+import { handleError } from '../utils/errorHandler.js';
+import { getTodayDate, getEmployeeIdByUserId } from '../utils/helpers.js';
+import { PAYROLL_STATUS, LEAVE_STATUS, ATTENDANCE_STATUS } from '../utils/constants.js';
 
 const router = express.Router();
 
@@ -29,7 +32,8 @@ router.get('/stats', authenticate, async (req, res) => {
     );
 
     // Today's attendance
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayDate();
+    const dateParamIndex = params.length + 1;
     let attendanceQuery = `
       SELECT 
         COUNT(DISTINCT CASE 
@@ -39,7 +43,7 @@ router.get('/stats', authenticate, async (req, res) => {
         COUNT(DISTINCT CASE 
           WHEN a.check_in IS NULL 
             AND (a.status = 'Absent' OR a.id IS NULL)
-            AND (l.id IS NULL OR l.status != 'Approved' OR CAST($1 AS DATE) < l.start_date OR CAST($1 AS DATE) > l.end_date)
+            AND (l.id IS NULL OR l.status != 'Approved' OR CAST($${dateParamIndex} AS DATE) < l.start_date OR CAST($${dateParamIndex} AS DATE) > l.end_date)
           THEN e.id
         END) as absent,
         COUNT(DISTINCT CASE 
@@ -48,20 +52,20 @@ router.get('/stats', authenticate, async (req, res) => {
               (a.status = 'Leave')
               OR (l.id IS NOT NULL 
                   AND l.status = 'Approved' 
-                  AND CAST($1 AS DATE) >= l.start_date 
-                  AND CAST($1 AS DATE) <= l.end_date)
+                  AND CAST($${dateParamIndex} AS DATE) >= l.start_date 
+                  AND CAST($${dateParamIndex} AS DATE) <= l.end_date)
             )
           THEN e.id
         END) as leave
       FROM employees e
-      LEFT JOIN attendance a ON e.id = a.employee_id AND a.date = $1
+      LEFT JOIN attendance a ON e.id = a.employee_id AND a.date = $${dateParamIndex}
       LEFT JOIN leaves l ON e.id = l.employee_id 
         AND l.status = 'Approved' 
-        AND CAST($1 AS DATE) >= l.start_date 
-        AND CAST($1 AS DATE) <= l.end_date
+        AND CAST($${dateParamIndex} AS DATE) >= l.start_date 
+        AND CAST($${dateParamIndex} AS DATE) <= l.end_date
       ${employeeFilter}
     `;
-    const attendanceParams = [today, ...params];
+    const attendanceParams = [...params, today];
 
     const todayAttendance = await pool.query(attendanceQuery, attendanceParams);
 
@@ -70,7 +74,7 @@ router.get('/stats', authenticate, async (req, res) => {
     if (['Admin', 'HR Officer', 'Payroll Officer'].includes(req.user.role)) {
       const leavesResult = await pool.query(
         'SELECT COUNT(*) as count FROM leaves WHERE status = $1',
-        ['Pending']
+        [LEAVE_STATUS.PENDING]
       );
       pendingLeaves = leavesResult.rows[0];
     } else if (req.user.role === 'Employee') {
@@ -81,7 +85,7 @@ router.get('/stats', authenticate, async (req, res) => {
       if (employeeResult.rows.length > 0) {
         const leavesResult = await pool.query(
           'SELECT COUNT(*) as count FROM leaves WHERE employee_id = $1 AND status = $2',
-          [employeeResult.rows[0].id, 'Pending']
+          [employeeResult.rows[0].id, LEAVE_STATUS.PENDING]
         );
         pendingLeaves = leavesResult.rows[0];
       }
@@ -94,11 +98,11 @@ router.get('/stats', authenticate, async (req, res) => {
       const currentYear = new Date().getFullYear();
       const payrollResult = await pool.query(
         `SELECT 
-          COUNT(CASE WHEN status = 'Processed' THEN 1 END) as processed,
-          COUNT(CASE WHEN status = 'Pending' THEN 1 END) as pending
+          COUNT(CASE WHEN status = $1 THEN 1 END) as processed,
+          COUNT(CASE WHEN status = $2 THEN 1 END) as pending
          FROM payroll
-         WHERE month = $1 AND year = $2`,
-        [currentMonth, currentYear]
+         WHERE month = $3 AND year = $4`,
+        [PAYROLL_STATUS.PROCESSED, PAYROLL_STATUS.PENDING, currentMonth, currentYear]
       );
       payrollStats = payrollResult.rows[0];
     }
@@ -117,8 +121,105 @@ router.get('/stats', authenticate, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Get dashboard stats error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Get dashboard stats');
+    res.status(500).json(errorResponse);
+  }
+});
+
+// Get employee dashboard statistics (simplified)
+router.get('/employee/stats', authenticate, async (req, res) => {
+  try {
+    if (req.user.role !== 'Employee') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Get employee ID
+    const employeeResult = await pool.query(
+      'SELECT id FROM employees WHERE user_id = $1',
+      [req.user.id]
+    );
+
+    if (employeeResult.rows.length === 0) {
+      return res.json({
+        totalEmployees: 0,
+        todayAttendance: { present: 0, absent: 0, leave: 0 },
+        pendingLeaves: 0,
+        payrollStats: { processed: 0, pending: 0 }
+      });
+    }
+
+    const employeeId = employeeResult.rows[0].id;
+
+    // Total employees (always 1 for employee)
+    const totalEmployees = 1;
+
+    // Today's attendance
+    const today = getTodayDate();
+    const attendanceResult = await pool.query(
+      `SELECT 
+        CASE 
+          WHEN a.check_in IS NOT NULL OR a.status = 'Present' THEN 'present'
+          WHEN l.id IS NOT NULL AND l.status = 'Approved' AND CAST($1 AS DATE) >= l.start_date AND CAST($1 AS DATE) <= l.end_date THEN 'leave'
+          ELSE 'absent'
+        END as status
+      FROM employees e
+      LEFT JOIN attendance a ON e.id = a.employee_id AND a.date = $1
+      LEFT JOIN leaves l ON e.id = l.employee_id 
+        AND l.status = 'Approved' 
+        AND CAST($1 AS DATE) >= l.start_date 
+        AND CAST($1 AS DATE) <= l.end_date
+      WHERE e.id = $2`,
+      [today, employeeId]
+    );
+
+    let present = 0, absent = 0, leave = 0;
+    if (attendanceResult.rows.length > 0) {
+      const status = attendanceResult.rows[0].status;
+      if (status === 'present') present = 1;
+      else if (status === 'leave') leave = 1;
+      else absent = 1;
+    } else {
+      absent = 1;
+    }
+
+    // Pending leave requests
+    const leavesResult = await pool.query(
+      'SELECT COUNT(*) as count FROM leaves WHERE employee_id = $1 AND status = $2',
+      [employeeId, 'Pending']
+    );
+    const pendingLeaves = parseInt(leavesResult.rows[0].count) || 0;
+
+    // Get this month attendance count
+    const currentMonth = new Date().getMonth() + 1;
+    const currentYear = new Date().getFullYear();
+    const firstDay = new Date(currentYear, currentMonth - 1, 1).toISOString().split('T')[0];
+    const monthAttendanceResult = await pool.query(
+      `SELECT COUNT(*) as count 
+       FROM attendance 
+       WHERE employee_id = $1 
+         AND date >= $2 
+         AND (check_in IS NOT NULL OR status = 'Present')`,
+      [employeeId, firstDay]
+    );
+    const thisMonthPresent = parseInt(monthAttendanceResult.rows[0].count) || 0;
+
+    res.json({
+      totalEmployees,
+      todayAttendance: {
+        present,
+        absent,
+        leave
+      },
+      pendingLeaves,
+      thisMonthPresent,
+      payrollStats: {
+        processed: 0,
+        pending: 0
+      }
+    });
+  } catch (error) {
+    const errorResponse = handleError(error, 'Get employee dashboard stats');
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -188,8 +289,8 @@ router.get('/analytics/attendance-trends', authenticate, async (req, res) => {
 
     res.json(trends);
   } catch (error) {
-    console.error('Get attendance trends error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Get attendance trends');
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -230,8 +331,8 @@ router.get('/analytics/leave-distribution', authenticate, async (req, res) => {
     const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (error) {
-    console.error('Get leave distribution error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Get leave distribution');
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -257,8 +358,8 @@ router.get('/analytics/department-stats', authenticate, async (req, res) => {
     const result = await pool.query(query);
     res.json(result.rows);
   } catch (error) {
-    console.error('Get department stats error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Get department stats');
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -308,8 +409,8 @@ router.get('/analytics/payroll-summary', authenticate, async (req, res) => {
 
     res.json(summary);
   } catch (error) {
-    console.error('Get payroll summary error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Get payroll summary');
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -375,8 +476,8 @@ router.get('/analytics/hr-overview', authenticate, async (req, res) => {
       averageAttendanceRate: parseFloat(avgAttendanceRate)
     });
   } catch (error) {
-    console.error('Get HR overview error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Get HR overview');
+    res.status(500).json(errorResponse);
   }
 });
 

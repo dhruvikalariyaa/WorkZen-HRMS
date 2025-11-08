@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { toast } from 'react-toastify';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 
@@ -55,13 +56,13 @@ const Reports = () => {
 
   const handleGenerateReport = async () => {
     if (!reportType) {
-      alert('Please select a report type');
+      toast.warning('Please select a report type');
       return;
     }
 
     if (reportType === 'salary-statement') {
       if (!filters.employeeId || !filters.year) {
-        alert('Please select an employee and year');
+        toast.warning('Please select an employee and year');
         return;
       }
     }
@@ -104,7 +105,7 @@ const Reports = () => {
       }
     } catch (error) {
       console.error('Failed to generate report:', error);
-      alert(error.response?.data?.error || 'Failed to generate report');
+      toast.error(error.response?.data?.error || 'Failed to generate report');
     } finally {
       setLoading(false);
     }
@@ -112,7 +113,7 @@ const Reports = () => {
 
   const handleExportPDF = async () => {
     if (!filters.employeeId || !filters.year) {
-      alert('Please select an employee and year');
+      toast.warning('Please select an employee and year');
       return;
     }
 
@@ -143,13 +144,13 @@ const Reports = () => {
       document.body.removeChild(a);
     } catch (error) {
       console.error('Failed to export PDF:', error);
-      alert('Failed to export PDF');
+      toast.error('Failed to export PDF');
     }
   };
 
   const handleExportExcel = async () => {
     if (!filters.employeeId || !filters.year) {
-      alert('Please select an employee and year');
+      toast.warning('Please select an employee and year');
       return;
     }
 
@@ -180,7 +181,7 @@ const Reports = () => {
       document.body.removeChild(a);
     } catch (error) {
       console.error('Failed to export Excel:', error);
-      alert('Failed to export Excel');
+      toast.error('Failed to export Excel');
     }
   };
 

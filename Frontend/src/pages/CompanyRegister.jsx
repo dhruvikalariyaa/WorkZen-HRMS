@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { toast } from 'react-toastify';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../utils/api';
 
@@ -45,7 +46,7 @@ const CompanyRegister = () => {
 
     try {
       const response = await api.post('/company/register', formData);
-      alert('Company registered successfully! Now you can register users.');
+      toast.success('Company registered successfully! Now you can register users.');
       navigate('/register');
     } catch (error) {
       setError(error.response?.data?.error || 'Failed to register company');

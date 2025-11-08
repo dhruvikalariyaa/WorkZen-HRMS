@@ -457,14 +457,7 @@ const Settings = () => {
 
           {activeTab === 'users' && (
             <div>
-              <div className="mb-4">
-                <p className="text-sm text-gray-600 mb-2">
-                  In the Admin Settings, the administrator can assign user access rights based on each user's role.
-                </p>
-                <p className="text-sm text-gray-600 mb-4">
-                  Access rights can be configured on a module basis, allowing specific permissions for each module.
-                </p>
-              </div>
+              
 
               {loadingUsers ? (
                 <div className="text-center py-12">Loading users...</div>
@@ -521,15 +514,7 @@ const Settings = () => {
                 </div>
               )}
 
-              <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-                <p className="text-sm text-gray-700">
-                  <strong>Note:</strong> Select user access rights as per their role and responsibilities. 
-                  These access rights define what users are allowed to access and what they are restricted from accessing.
-                </p>
-                <p className="text-sm text-gray-600 mt-2">
-                  Available roles: <strong>Employee</strong> / <strong>Admin</strong> / <strong>HR Officer</strong> / <strong>Payroll Officer</strong> / <strong>Manager</strong>
-                </p>
-              </div>
+             
             </div>
           )}
         </div>

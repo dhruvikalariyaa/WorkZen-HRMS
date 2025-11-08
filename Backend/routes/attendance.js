@@ -2,13 +2,16 @@ import express from 'express';
 import { body, validationResult } from 'express-validator';
 import pool from '../config/database.js';
 import { authenticate, authorize } from '../middleware/auth.js';
+import { handleError, handleValidationError, handleNotFoundError } from '../utils/errorHandler.js';
+import { getTodayDate, getEmployeeIdByUserId } from '../utils/helpers.js';
+import { PAYROLL_CONSTANTS, ATTENDANCE_STATUS } from '../utils/constants.js';
 
 const router = express.Router();
 
 // Get today's check-in status for employee (must be before / route)
 router.get('/today-status', authenticate, authorize('Employee'), async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayDate();
     
     const employeeResult = await pool.query(
       'SELECT id FROM employees WHERE user_id = $1',
@@ -38,8 +41,8 @@ router.get('/today-status', authenticate, authorize('Employee'), async (req, res
       checkOut: record.check_out
     });
   } catch (error) {
-    console.error('Get today status error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Get today status');
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -99,8 +102,8 @@ router.get('/summary', authenticate, authorize('Employee'), async (req, res) => 
       totalWorkingDays: totalWorkingDays
     });
   } catch (error) {
-    console.error('Get attendance summary error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Get attendance summary');
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -130,7 +133,7 @@ router.get('/', authenticate, async (req, res) => {
 
     // For Admin/HR/Payroll: default to today's date if no date specified
     if (['Admin', 'HR Officer', 'Payroll Officer'].includes(req.user.role) && !req.query.date && !req.query.startDate) {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getTodayDate();
       conditions.push(`a.date = $${params.length + 1}`);
       params.push(today);
     }
@@ -180,20 +183,20 @@ router.get('/', authenticate, async (req, res) => {
     const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (error) {
-    console.error('Get attendance error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Get attendance');
+    res.status(500).json(errorResponse);
   }
 });
 
 // Mark attendance (Employee only)
 router.post('/', authenticate, authorize('Employee'), [
   body('date').isISO8601(),
-  body('status').isIn(['Present', 'Absent', 'Leave']),
+  body('status').isIn([ATTENDANCE_STATUS.PRESENT, ATTENDANCE_STATUS.ABSENT, ATTENDANCE_STATUS.LEAVE]),
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.status(400).json(handleValidationError(errors.array()));
     }
 
     const { date, status, checkIn, checkOut } = req.body;
@@ -219,7 +222,7 @@ router.post('/', authenticate, authorize('Employee'), [
     // Calculate total hours and extra hours (assuming 8 hours standard work day)
     let totalHours = null;
     let extraHours = 0;
-    const STANDARD_WORK_HOURS = 8;
+    const STANDARD_WORK_HOURS = PAYROLL_CONSTANTS.STANDARD_WORK_HOURS;
 
     if (checkIn && checkOut) {
       const checkInTime = new Date(`2000-01-01T${checkIn}`);
@@ -254,8 +257,8 @@ router.post('/', authenticate, authorize('Employee'), [
       res.status(201).json(result.rows[0]);
     }
   } catch (error) {
-    console.error('Mark attendance error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Mark attendance');
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -267,7 +270,7 @@ router.put('/:id', authenticate, authorize('Admin', 'HR Officer'), async (req, r
 
     let totalHours = null;
     let extraHours = 0;
-    const STANDARD_WORK_HOURS = 8;
+    const STANDARD_WORK_HOURS = PAYROLL_CONSTANTS.STANDARD_WORK_HOURS;
 
     if (checkIn && checkOut) {
       const checkInTime = new Date(`2000-01-01T${checkIn}`);
@@ -290,20 +293,20 @@ router.put('/:id', authenticate, authorize('Admin', 'HR Officer'), async (req, r
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Attendance record not found' });
+      return res.status(404).json(handleNotFoundError('Attendance record'));
     }
 
     res.json(result.rows[0]);
   } catch (error) {
-    console.error('Update attendance error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Update attendance');
+    res.status(500).json(errorResponse);
   }
 });
 
 // Check In (Employee only)
 router.post('/checkin', authenticate, authorize('Employee'), async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayDate();
     const now = new Date();
     const checkInTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
 
@@ -350,15 +353,15 @@ router.post('/checkin', authenticate, authorize('Employee'), async (req, res) =>
       res.status(201).json(result.rows[0]);
     }
   } catch (error) {
-    console.error('Check in error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Check in');
+    res.status(500).json(errorResponse);
   }
 });
 
 // Check Out (Employee only)
 router.post('/checkout', authenticate, authorize('Employee'), async (req, res) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayDate();
     const now = new Date();
     const checkOutTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
 
@@ -396,7 +399,7 @@ router.post('/checkout', authenticate, authorize('Employee'), async (req, res) =
     let totalHours = (checkOutDate - checkInDate) / (1000 * 60 * 60);
     if (totalHours < 0) totalHours += 24;
     
-    const STANDARD_WORK_HOURS = 8;
+    const STANDARD_WORK_HOURS = PAYROLL_CONSTANTS.STANDARD_WORK_HOURS;
     let extraHours = 0;
     if (totalHours > STANDARD_WORK_HOURS) {
       extraHours = totalHours - STANDARD_WORK_HOURS;
@@ -412,8 +415,8 @@ router.post('/checkout', authenticate, authorize('Employee'), async (req, res) =
 
     res.json(result.rows[0]);
   } catch (error) {
-    console.error('Check out error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Check out');
+    res.status(500).json(errorResponse);
   }
 });
 

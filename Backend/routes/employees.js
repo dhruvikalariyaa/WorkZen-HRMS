@@ -2,89 +2,10 @@ import express from 'express';
 import { body, validationResult } from 'express-validator';
 import pool from '../config/database.js';
 import { authenticate, authorize } from '../middleware/auth.js';
-import bcrypt from 'bcryptjs';
 import { sendEmployeeCredentials } from '../config/email.js';
-
-// Generate Employee ID (auto-generated)
-const generateEmployeeId = async () => {
-  try {
-    // Get company name for prefix
-    const companyResult = await pool.query('SELECT company_name FROM company_info LIMIT 1');
-    let prefix = 'EMP';
-    
-    if (companyResult.rows.length > 0) {
-      const companyName = companyResult.rows[0].company_name || 'WORKZEN';
-      prefix = companyName.substring(0, 3).toUpperCase();
-    }
-    
-    // Get all employee IDs with the same prefix
-    const result = await pool.query(
-      `SELECT employee_id FROM employees WHERE employee_id LIKE $1`,
-      [`${prefix}%`]
-    );
-    
-    let maxNumber = 0;
-    const prefixRegex = new RegExp(`^${prefix}(\\d+)$`);
-    
-    result.rows.forEach(row => {
-      const match = row.employee_id.match(prefixRegex);
-      if (match) {
-        const num = parseInt(match[1]);
-        if (num > maxNumber) {
-          maxNumber = num;
-        }
-      }
-    });
-    
-    const nextNumber = maxNumber + 1;
-    
-    // Format: PREFIX + 5-digit number (e.g., EMP00001, WORK00001)
-    return `${prefix}${String(nextNumber).padStart(5, '0')}`;
-  } catch (error) {
-    console.error('Generate Employee ID error:', error);
-    // Fallback: use timestamp-based ID
-    return `EMP${Date.now().toString().slice(-8)}`;
-  }
-};
-
-// Generate Login ID (same as in auth.js)
-const generateLoginId = async (firstName, lastName, hireDate) => {
-  try {
-    const companyResult = await pool.query('SELECT company_name FROM company_info LIMIT 1');
-    if (companyResult.rows.length === 0) {
-      throw new Error('Company not registered');
-    }
-    
-    const companyName = companyResult.rows[0].company_name || 'WORKZEN';
-    const companyInitials = companyName.substring(0, 2).toUpperCase();
-    const firstNameInitials = (firstName || '').substring(0, 2).toUpperCase();
-    const lastNameInitials = (lastName || '').substring(0, 2).toUpperCase();
-    const nameInitials = firstNameInitials + lastNameInitials;
-    const year = hireDate ? new Date(hireDate).getFullYear() : new Date().getFullYear();
-    
-    const serialResult = await pool.query(
-      `SELECT COUNT(*) as count FROM users WHERE login_id LIKE $1`,
-      [`${companyInitials}${nameInitials}${year}%`]
-    );
-    const serialNumber = parseInt(serialResult.rows[0].count) + 1;
-    
-    return `${companyInitials}${nameInitials}${year}${String(serialNumber).padStart(4, '0')}`;
-  } catch (error) {
-    console.error('Generate Login ID error:', error);
-    throw error;
-  }
-};
-
-// Generate random password
-const generatePassword = () => {
-  const length = 8;
-  const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@#$%';
-  let password = '';
-  for (let i = 0; i < length; i++) {
-    password += charset.charAt(Math.floor(Math.random() * charset.length));
-  }
-  return password;
-};
+import { generateEmployeeId, generateLoginId, generatePassword, hashPassword } from '../utils/helpers.js';
+import { handleError, handleValidationError } from '../utils/errorHandler.js';
+import { PAYROLL_CONSTANTS } from '../utils/constants.js';
 
 const router = express.Router();
 
@@ -125,8 +46,8 @@ router.get('/', authenticate, async (req, res) => {
     const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (error) {
-    console.error('Get employees error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Get employees');
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -177,8 +98,8 @@ router.get('/with-status', authenticate, async (req, res) => {
     const result = await pool.query(query, params);
     res.json(result.rows);
   } catch (error) {
-    console.error('Get employees with status error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Get employees with status');
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -204,8 +125,8 @@ router.get('/:id', authenticate, async (req, res) => {
 
     res.json(result.rows[0]);
   } catch (error) {
-    console.error('Get employee error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Get employee');
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -235,7 +156,7 @@ router.post('/', authenticate, authorize('Admin', 'HR Officer'), [
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.status(400).json(handleValidationError(errors.array()));
     }
 
     const {
@@ -283,12 +204,12 @@ router.post('/', authenticate, authorize('Admin', 'HR Officer'), [
     }
 
     // Calculate basic salary (80% of total salary)
-    const basicSalary = salary ? salary * 0.8 : 0;
+    const basicSalary = salary ? salary * PAYROLL_CONSTANTS.BASIC_SALARY_PERCENTAGE : 0;
 
     // Generate Login ID and Password for user account
     const loginId = await generateLoginId(firstName, lastName, hireDate || new Date());
     const generatedPassword = generatePassword();
-    const hashedPassword = await bcrypt.hash(generatedPassword, 10);
+    const hashedPassword = await hashPassword(generatedPassword);
 
     // Get role from request body, default to 'Employee' if not provided
     const userRole = req.body.role || 'Employee';
@@ -333,8 +254,8 @@ router.post('/', authenticate, authorize('Admin', 'HR Officer'), [
       note: 'User account created. Login ID and password generated. User must change password on first login.'
     });
   } catch (error) {
-    console.error('Create employee error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Create employee');
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -346,7 +267,7 @@ router.put('/:id', authenticate, authorize('Admin', 'HR Officer'), [
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      return res.status(400).json(handleValidationError(errors.array()));
     }
 
     const { id } = req.params;
@@ -402,7 +323,7 @@ router.put('/:id', authenticate, authorize('Admin', 'HR Officer'), [
       updateFields.push(`salary = $${paramCount++}`);
       values.push(salary);
       updateFields.push(`basic_salary = $${paramCount++}`);
-      values.push(salary * 0.8);
+      values.push(salary * PAYROLL_CONSTANTS.BASIC_SALARY_PERCENTAGE);
     }
 
     updateFields.push(`updated_at = CURRENT_TIMESTAMP`);
@@ -419,8 +340,8 @@ router.put('/:id', authenticate, authorize('Admin', 'HR Officer'), [
 
     res.json(result.rows[0]);
   } catch (error) {
-    console.error('Update employee error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Update employee');
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -443,8 +364,8 @@ router.delete('/:id', authenticate, authorize('Admin', 'HR Officer'), async (req
 
     res.json({ message: 'Employee deleted successfully' });
   } catch (error) {
-    console.error('Delete employee error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Delete employee');
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -477,7 +398,7 @@ router.post('/:id/send-credentials', authenticate, authorize('Admin', 'HR Office
     // Get the original password - we need to check if we stored it or generate a new one
     // Since passwords are hashed, we'll need to reset it and send new credentials
     const generatedPassword = generatePassword();
-    const hashedPassword = await bcrypt.hash(generatedPassword, 10);
+    const hashedPassword = await hashPassword(generatedPassword);
 
     // Update user password
     await pool.query(
@@ -510,8 +431,8 @@ router.post('/:id/send-credentials', authenticate, authorize('Admin', 'HR Office
       });
     }
   } catch (error) {
-    console.error('Send credentials error:', error);
-    res.status(500).json({ error: 'Server error' });
+    const errorResponse = handleError(error, 'Send credentials');
+    res.status(500).json(errorResponse);
   }
 });
 

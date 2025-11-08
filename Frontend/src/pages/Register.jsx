@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { toast } from 'react-toastify';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
@@ -96,7 +97,7 @@ const Register = () => {
           }
         }
 
-        alert('Company and Admin registered successfully!');
+        toast.success('Company and Admin registered successfully!');
         navigate('/login', { state: { message: 'Registration successful! Please login with your Login ID or Email.' } });
       } else {
         setError(result.error);

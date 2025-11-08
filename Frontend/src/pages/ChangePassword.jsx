@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { toast } from 'react-toastify';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
@@ -63,7 +64,7 @@ const ChangePassword = () => {
       
       await api.post('/auth/change-password', requestData);
 
-      alert('Password changed successfully!');
+      toast.success('Password changed successfully!');
       navigate('/dashboard');
     } catch (error) {
       setError(error.response?.data?.error || 'Failed to change password');
