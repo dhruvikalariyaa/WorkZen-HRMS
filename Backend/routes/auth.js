@@ -6,6 +6,7 @@ import { authenticate, authorize } from '../middleware/auth.js';
 import { generateLoginId, generatePassword, hashPassword, comparePassword } from '../utils/helpers.js';
 import { handleError, handleValidationError } from '../utils/errorHandler.js';
 import { PASSWORD_CONSTANTS } from '../utils/constants.js';
+import { sendPasswordResetEmail } from '../config/email.js';
 
 const router = express.Router();
 
@@ -280,6 +281,87 @@ router.post('/change-password', authenticate, [
     });
   } catch (error) {
     const errorResponse = handleError(error, 'Change password');
+    res.status(500).json(errorResponse);
+  }
+});
+
+// Forgot Password - Generate new password and send via email
+router.post('/forgot-password', [
+  body('loginIdOrEmail').notEmpty().trim(),
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json(handleValidationError(errors.array()));
+    }
+
+    const { loginIdOrEmail } = req.body;
+
+    // Get user by login_id or email
+    const userResult = await pool.query(
+      `SELECT u.id, u.login_id, u.email, u.role, 
+              e.first_name, e.last_name, e.email as employee_email
+       FROM users u
+       LEFT JOIN employees e ON u.id = e.user_id
+       WHERE u.login_id = $1 OR u.email = $1`,
+      [loginIdOrEmail]
+    );
+
+    if (userResult.rows.length === 0) {
+      // Don't reveal if user exists or not for security
+      return res.json({
+        message: 'If the account exists, a password reset email has been sent.',
+        emailSent: false
+      });
+    }
+
+    const user = userResult.rows[0];
+    const userEmail = user.email || user.employee_email;
+    const userName = user.first_name && user.last_name 
+      ? `${user.first_name} ${user.last_name}` 
+      : user.email || user.login_id;
+
+    if (!userEmail) {
+      return res.status(400).json({ 
+        error: 'Email not found for this account. Please contact your HR department for password reset.' 
+      });
+    }
+
+    // Generate new password
+    const newPassword = generatePassword();
+    const hashedPassword = await hashPassword(newPassword);
+
+    // Update password and reset password change flag
+    await pool.query(
+      'UPDATE users SET password = $1, is_password_changed = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [hashedPassword, user.id]
+    );
+
+    // Send password reset email
+    const emailResult = await sendPasswordResetEmail(
+      userEmail,
+      user.login_id,
+      newPassword,
+      userName
+    );
+
+    if (emailResult.success) {
+      res.json({
+        message: 'Password reset email has been sent to your email address. Please check your inbox.',
+        emailSent: true
+      });
+    } else {
+      // If email fails, still return success but with a note
+      res.status(500).json({
+        error: 'Failed to send email',
+        details: emailResult.error,
+        loginId: user.login_id,
+        password: newPassword,
+        note: 'Email could not be sent. Please contact your HR department or use the credentials above to login. You must change your password after first login.'
+      });
+    }
+  } catch (error) {
+    const errorResponse = handleError(error, 'Forgot password');
     res.status(500).json(errorResponse);
   }
 });

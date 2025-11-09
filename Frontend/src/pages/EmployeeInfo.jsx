@@ -37,6 +37,10 @@ const EmployeeInfo = () => {
   const [userRole, setUserRole] = useState(null);
   const [userId, setUserId] = useState(null);
   const [activeTab, setActiveTab] = useState('basic'); // 'basic', 'resume', 'private', 'salary'
+  const [showDeleteSkillConfirm, setShowDeleteSkillConfirm] = useState(false);
+  const [skillToDelete, setSkillToDelete] = useState(null);
+  const [showDeleteCertificationConfirm, setShowDeleteCertificationConfirm] = useState(false);
+  const [certificationToDelete, setCertificationToDelete] = useState(null);
 
   // Resume data
   const [resumeData, setResumeData] = useState({
@@ -404,10 +408,15 @@ const EmployeeInfo = () => {
     }
   };
 
-  const handleDeleteSkill = async (skillId) => {
-    if (!employeeId || !skillId) return;
+  const handleDeleteSkillClick = (skillId, skillName) => {
+    setSkillToDelete({ id: skillId, name: skillName });
+    setShowDeleteSkillConfirm(true);
+  };
+
+  const handleDeleteSkillConfirm = async () => {
+    if (!employeeId || !skillToDelete?.id) return;
     try {
-      await api.delete(`/profile/${employeeId}/skills/${skillId}`);
+      await api.delete(`/profile/${employeeId}/skills/${skillToDelete.id}`);
       toast.success('Skill deleted successfully');
       // Refresh profile data
       const profileResponse = await api.get(`/profile/${employeeId}`);
@@ -415,9 +424,18 @@ const EmployeeInfo = () => {
         ...resumeData,
         skills: profileResponse.data.skills || []
       });
+      setShowDeleteSkillConfirm(false);
+      setSkillToDelete(null);
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to delete skill');
+      setShowDeleteSkillConfirm(false);
+      setSkillToDelete(null);
     }
+  };
+
+  const handleDeleteSkillCancel = () => {
+    setShowDeleteSkillConfirm(false);
+    setSkillToDelete(null);
   };
 
   const handleAddCertification = async () => {
@@ -442,10 +460,15 @@ const EmployeeInfo = () => {
     }
   };
 
-  const handleDeleteCertification = async (certId) => {
-    if (!employeeId) return;
+  const handleDeleteCertificationClick = (certId, certName) => {
+    setCertificationToDelete({ id: certId, name: certName });
+    setShowDeleteCertificationConfirm(true);
+  };
+
+  const handleDeleteCertificationConfirm = async () => {
+    if (!employeeId || !certificationToDelete?.id) return;
     try {
-      await api.delete(`/profile/${employeeId}/certifications/${certId}`);
+      await api.delete(`/profile/${employeeId}/certifications/${certificationToDelete.id}`);
       toast.success('Certification deleted successfully');
       // Refresh profile data
       const profileResponse = await api.get(`/profile/${employeeId}`);
@@ -453,9 +476,18 @@ const EmployeeInfo = () => {
         ...resumeData,
         certifications: profileResponse.data.certifications || []
       });
+      setShowDeleteCertificationConfirm(false);
+      setCertificationToDelete(null);
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to delete certification');
+      setShowDeleteCertificationConfirm(false);
+      setCertificationToDelete(null);
     }
+  };
+
+  const handleDeleteCertificationCancel = () => {
+    setShowDeleteCertificationConfirm(false);
+    setCertificationToDelete(null);
   };
 
   // Handlers for Private Info
@@ -564,6 +596,86 @@ const EmployeeInfo = () => {
   return (
     <div>
       <h1 className="text-2xl font-bold text-gray-800 mb-6">Employee Information</h1>
+
+      {/* Delete Skill Confirmation Modal */}
+      {showDeleteSkillConfirm && skillToDelete && (
+        <div className="fixed inset-0 bg-gray-40 bg-opacity-10 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-2xl">
+            <div className="flex items-center mb-4">
+              <div className="flex-shrink-0 w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mr-4">
+                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900">Delete Skill</h3>
+                <p className="text-sm text-gray-500 mt-1">This action cannot be undone</p>
+              </div>
+            </div>
+            
+            <div className="mb-6">
+              <p className="text-gray-700">
+                Are you sure you want to delete the skill <span className="font-semibold">{skillToDelete.name}</span>?
+              </p>
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={handleDeleteSkillCancel}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteSkillConfirm}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Certification Confirmation Modal */}
+      {showDeleteCertificationConfirm && certificationToDelete && (
+        <div className="fixed inset-0 bg-gray-40 bg-opacity-10 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-2xl">
+            <div className="flex items-center mb-4">
+              <div className="flex-shrink-0 w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mr-4">
+                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900">Delete Certification</h3>
+                <p className="text-sm text-gray-500 mt-1">This action cannot be undone</p>
+              </div>
+            </div>
+            
+            <div className="mb-6">
+              <p className="text-gray-700">
+                Are you sure you want to delete the certification <span className="font-semibold">{certificationToDelete.name}</span>?
+              </p>
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={handleDeleteCertificationCancel}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteCertificationConfirm}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="bg-white rounded-lg shadow-md p-6">
         {error && (
@@ -1009,7 +1121,7 @@ const EmployeeInfo = () => {
                         <button
                           onClick={() => {
                             if (skill.id) {
-                              handleDeleteSkill(skill.id);
+                              handleDeleteSkillClick(skill.id, skill.skill_name || skill);
                             }
                           }}
                           className="text-red-600 hover:text-red-800"
@@ -1070,7 +1182,7 @@ const EmployeeInfo = () => {
                           )}
                         </div>
                         <button
-                          onClick={() => handleDeleteCertification(cert.id)}
+                          onClick={() => handleDeleteCertificationClick(cert.id, cert.certification_name)}
                           className="text-red-600 hover:text-red-800"
                         >
                           ✕

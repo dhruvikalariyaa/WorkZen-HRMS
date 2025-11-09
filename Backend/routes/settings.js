@@ -5,8 +5,8 @@ import { authenticate, authorize } from '../middleware/auth.js';
 
 const router = express.Router();
 
-// Get company logo (for all authenticated users - used in navbar)
-router.get('/company/logo', authenticate, async (req, res) => {
+// Get company logo (public - for login page and authenticated users)
+router.get('/company/logo', async (req, res) => {
   try {
     const result = await pool.query('SELECT logo_url, company_name FROM company_info LIMIT 1');
     res.json({

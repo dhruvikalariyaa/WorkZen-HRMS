@@ -25,21 +25,57 @@ const Leaves = () => {
   const [viewingAttachment, setViewingAttachment] = useState(null);
   const [useGoogleViewer, setUseGoogleViewer] = useState(false);
   const [showViewModeDropdown, setShowViewModeDropdown] = useState(false);
+  const [submittingLeave, setSubmittingLeave] = useState(false);
+  const [changingStatus, setChangingStatus] = useState(null);
+  const [loadingLeaveTypes, setLoadingLeaveTypes] = useState(false);
+  const [loadingAvailableDays, setLoadingAvailableDays] = useState(false);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
+  const [employees, setEmployees] = useState([]);
+  const [loadingEmployees, setLoadingEmployees] = useState(false);
 
   const isEmployee = user?.role === 'Employee';
   const isHRorPayroll = ['HR Officer', 'Payroll Officer'].includes(user?.role);
-  const canApplyLeave = ['Employee', 'HR Officer', 'Payroll Officer'].includes(user?.role);
+  const isAdmin = user?.role === 'Admin';
+  const canApplyLeave = ['Admin', 'Employee', 'HR Officer', 'Payroll Officer'].includes(user?.role);
   const canApprove = ['Admin', 'HR Officer', 'Manager', 'Payroll Officer'].includes(user?.role);
   
   // For HR/Payroll: toggle between "All Time Off" and "My Time Off"
   const [viewMode, setViewMode] = useState('my'); // 'all' or 'my'
 
+  // Initial load
   useEffect(() => {
     fetchLeaves();
     fetchLeaveTypes();
-    if (canApplyLeave && (isEmployee || viewMode === 'my')) {
+    if (isAdmin) {
+      fetchEmployees();
+    }
+    if (canApplyLeave && (isEmployee || viewMode === 'my' || user?.role === 'Admin')) {
       fetchAvailableDays();
     }
+  }, []);
+
+  // Update leave types and available days when view mode changes
+  useEffect(() => {
+    fetchLeaveTypes();
+    if (canApplyLeave && (isEmployee || viewMode === 'my' || user?.role === 'Admin')) {
+      fetchAvailableDays(selectedEmployeeId);
+    }
+  }, [viewMode]);
+
+  // Update available days when selected employee changes (Admin only)
+  useEffect(() => {
+    if (isAdmin && selectedEmployeeId && showApplyLeave) {
+      fetchAvailableDays(selectedEmployeeId);
+    }
+  }, [selectedEmployeeId]);
+
+  // Debounced search and filters
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      fetchLeaves();
+    }, 500); // Wait 500ms after user stops typing
+
+    return () => clearTimeout(timeoutId);
   }, [searchTerm, statusFilter, selectedLeaveType, viewMode]);
 
   useEffect(() => {
@@ -56,6 +92,7 @@ const Leaves = () => {
 
   const fetchLeaves = async () => {
     try {
+      setLoading(true);
       const params = {};
       if (isHRorPayroll) {
         params.viewMode = viewMode;
@@ -68,6 +105,7 @@ const Leaves = () => {
       setLeaves(response.data);
     } catch (error) {
       console.error('Failed to fetch leaves:', error);
+      toast.error('Failed to load leaves');
     } finally {
       setLoading(false);
     }
@@ -75,20 +113,45 @@ const Leaves = () => {
 
   const fetchLeaveTypes = async () => {
     try {
+      setLoadingLeaveTypes(true);
       const response = await api.get('/leaves/types');
       setLeaveTypes(response.data);
       // Don't auto-select - let user choose which tab they want
     } catch (error) {
       console.error('Failed to fetch leave types:', error);
+      toast.error('Failed to load leave types');
+    } finally {
+      setLoadingLeaveTypes(false);
     }
   };
 
-  const fetchAvailableDays = async () => {
+  const fetchAvailableDays = async (employeeId = null) => {
     try {
-      const response = await api.get('/leaves/available-days');
+      setLoadingAvailableDays(true);
+      const params = {};
+      if (isAdmin && employeeId) {
+        params.employeeId = employeeId;
+      }
+      const response = await api.get('/leaves/available-days', { params });
       setAvailableDays(response.data);
     } catch (error) {
       console.error('Failed to fetch available days:', error);
+      toast.error('Failed to load available days');
+    } finally {
+      setLoadingAvailableDays(false);
+    }
+  };
+
+  const fetchEmployees = async () => {
+    try {
+      setLoadingEmployees(true);
+      const response = await api.get('/employees');
+      setEmployees(response.data || []);
+    } catch (error) {
+      console.error('Failed to fetch employees:', error);
+      toast.error('Failed to load employees');
+    } finally {
+      setLoadingEmployees(false);
     }
   };
 
@@ -133,10 +196,21 @@ const Leaves = () => {
   const handleApplyLeave = async (e) => {
     e.preventDefault();
     try {
-      await api.post('/leaves', {
-        ...applyLeaveData,
-        attachmentUrl: applyLeaveData.attachment
-      });
+      setSubmittingLeave(true);
+      const payload = {
+        leaveType: applyLeaveData.leaveType,
+        startDate: applyLeaveData.startDate,
+        endDate: applyLeaveData.endDate,
+        reason: applyLeaveData.reason,
+        attachmentUrl: applyLeaveData.attachment || null
+      };
+      
+      // If Admin selected an employee, include employeeId
+      if (isAdmin && selectedEmployeeId) {
+        payload.employeeId = selectedEmployeeId;
+      }
+      
+      await api.post('/leaves', payload);
       setShowApplyLeave(false);
       setApplyLeaveData({
         leaveType: '',
@@ -145,23 +219,29 @@ const Leaves = () => {
         reason: '',
         attachment: null
       });
+      setSelectedEmployeeId(null);
       setCalculatedDays(0);
       fetchLeaves();
       fetchAvailableDays();
       toast.success('Leave request submitted successfully');
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to apply for leave');
+    } finally {
+      setSubmittingLeave(false);
     }
   };
 
   const handleStatusChange = async (leaveId, status) => {
     try {
+      setChangingStatus(leaveId);
       await api.put(`/leaves/${leaveId}/status`, { status });
       fetchLeaves();
       fetchAvailableDays();
       toast.success(`Leave request ${status.toLowerCase()} successfully`);
     } catch (error) {
       toast.error('Failed to update leave status');
+    } finally {
+      setChangingStatus(null);
     }
   };
 
@@ -172,146 +252,268 @@ const Leaves = () => {
   };
 
   if (loading) {
-    return <div className="text-center py-12">Loading...</div>;
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 mb-4" style={{ borderColor: '#9333ea' }}></div>
+          <p className="text-gray-600 font-medium">Loading leaves...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <div className="flex items-center gap-4">
-          <h1 className="text-2xl font-bold text-gray-800">
-            {isEmployee || (isHRorPayroll && viewMode === 'my') ? 'My Time Off' : 'Time Off Management'}
-          </h1>
-        </div>
-        <div className="flex items-center gap-3">
-          {isHRorPayroll && (
-            <div className="relative">
-              <button
-                onClick={() => setShowViewModeDropdown(!showViewModeDropdown)}
-                className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 font-medium transition-colors flex items-center gap-2"
-              >
-                {viewMode === 'all' ? 'All Time Off' : 'My Time Off'}
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              {showViewModeDropdown && (
-                <>
-                  <div 
-                    className="fixed inset-0 z-10" 
-                    onClick={() => setShowViewModeDropdown(false)}
-                  ></div>
-                  <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-20">
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-6 py-6">
+        <div className="bg-white rounded-xl shadow-lg border-2 border-gray-200 overflow-hidden">
+          {/* Header */}
+          <div className="p-6 border-b-2 border-gray-200">
+            <div className="flex justify-between items-center">
+              <div>
+                <h1 className="text-lg font-semibold" style={{ color: '#8200db' }}>
+                  {isEmployee || (isHRorPayroll && viewMode === 'my') ? 'My Time Off' : 'Time Off Management'}
+                </h1>
+               </div>
+              <div className="flex items-center gap-3">
+                {isHRorPayroll && (
+                  <div className="relative">
                     <button
-                      onClick={() => {
-                        setViewMode('all');
-                        setSearchTerm('');
-                        setShowViewModeDropdown(false);
-                      }}
-                      className={`w-full text-left px-4 py-3 rounded-t-lg transition-colors ${
-                        viewMode === 'all'
-                          ? 'bg-purple-50 text-purple-600 font-medium'
-                          : 'text-gray-700 hover:bg-gray-50'
-                      }`}
+                      onClick={() => setShowViewModeDropdown(!showViewModeDropdown)}
+                      className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 font-medium transition-colors flex items-center gap-2 text-sm"
                     >
-                      All Time Off
+                      {viewMode === 'all' ? 'All Time Off' : 'My Time Off'}
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
                     </button>
-                    <button
-                      onClick={() => {
-                        setViewMode('my');
-                        setSearchTerm('');
-                        setShowViewModeDropdown(false);
-                      }}
-                      className={`w-full text-left px-4 py-3 rounded-b-lg transition-colors ${
-                        viewMode === 'my'
-                          ? 'bg-purple-50 text-purple-600 font-medium'
-                          : 'text-gray-700 hover:bg-gray-50'
-                      }`}
-                    >
-                      My Time Off
-                    </button>
+                    {showViewModeDropdown && (
+                      <>
+                        <div 
+                          className="fixed inset-0 z-10" 
+                          onClick={() => setShowViewModeDropdown(false)}
+                        ></div>
+                        <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border-2 border-gray-200 z-20">
+                          <button
+                            onClick={() => {
+                              setViewMode('all');
+                              setSearchTerm('');
+                              setShowViewModeDropdown(false);
+                            }}
+                            className={`w-full text-left px-4 py-3 rounded-t-lg transition-colors ${
+                              viewMode === 'all'
+                                ? 'bg-purple-50 font-medium'
+                                : 'text-gray-700 hover:bg-gray-50'
+                            }`}
+                            style={viewMode === 'all' ? { color: '#8200db' } : {}}
+                          >
+                            All Time Off
+                          </button>
+                          <button
+                            onClick={() => {
+                              setViewMode('my');
+                              setSearchTerm('');
+                              setShowViewModeDropdown(false);
+                            }}
+                            className={`w-full text-left px-4 py-3 rounded-b-lg transition-colors ${
+                              viewMode === 'my'
+                                ? 'bg-purple-50 font-medium'
+                                : 'text-gray-700 hover:bg-gray-50'
+                            }`}
+                            style={viewMode === 'my' ? { color: '#8200db' } : {}}
+                          >
+                            My Time Off
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
-                </>
-              )}
-            </div>
-          )}
-          {canApplyLeave && (isEmployee || viewMode === 'my') && (
-            <button
-              onClick={() => setShowApplyLeave(true)}
-              className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 font-semibold transition-colors"
-            >
-              NEW
-            </button>
-          )}
-         
-        </div>
-      </div>
-
-      {/* Leave Type Tabs */}
-      <div className="bg-white rounded-lg shadow-md mb-6">
-        <div className="border-b border-gray-200">
-          <div className="flex space-x-1 p-2">
-            <button
-              onClick={() => setSelectedLeaveType('')}
-              className={`px-4 py-2 rounded-t-lg font-medium ${
-                selectedLeaveType === ''
-                  ? 'bg-purple-50 text-purple-600 border-b-2 border-purple-600'
-                  : 'text-gray-600 hover:text-gray-800'
-              }`}
-            >
-              All Types
-            </button>
-            {leaveTypes.map((type) => (
-              <button
-                key={type.id}
-                onClick={() => setSelectedLeaveType(type.name)}
-                className={`px-4 py-2 rounded-t-lg font-medium ${
-                  selectedLeaveType === type.name
-                    ? 'bg-purple-50 text-purple-600 border-b-2 border-purple-600'
-                    : 'text-gray-600 hover:text-gray-800'
-                }`}
-              >
-                {type.name}
-                {availableDays[type.name] !== undefined && (
-                  <span className="ml-2 text-sm font-normal">
-                    ({availableDays[type.name].toFixed(2)} Days Available)
-                  </span>
                 )}
-              </button>
-            ))}
+                {canApplyLeave && (isEmployee || viewMode === 'my' || user?.role === 'Admin') && (
+                  <button
+                    onClick={() => setShowApplyLeave(true)}
+                    className="px-4 py-2 rounded-lg text-sm text-white transition-all font-medium shadow-md hover:shadow-lg"
+                    style={{ backgroundColor: '#8200db' }}
+                  >
+                    NEW
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* Search and Filter */}
-      <div className="bg-white rounded-lg shadow-md p-4 mb-6">
-        <div className="flex space-x-4">
-          {(user?.role === 'Admin' || user?.role === 'Manager' || (isHRorPayroll && viewMode === 'all')) && (
-            <input
-              type="text"
-              placeholder="Search by name or employee ID..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-            />
-          )}
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-          >
-            <option value="">All Status</option>
-            <option value="Pending">Pending</option>
-            <option value="Approved">Approved</option>
-            <option value="Rejected">Rejected</option>
-          </select>
+          <div className="p-8">
+
+            {/* Leave Type Tabs */}
+            <div className="mb-6">
+              <div className="bg-white rounded-lg border-2 border-gray-200 overflow-hidden">
+                <div className="border-b-2 border-gray-200">
+                  <div className="flex">
+                    <button
+                      onClick={() => setSelectedLeaveType('')}
+                      className={`px-6 py-3 font-medium text-sm transition-all relative ${
+                        selectedLeaveType === ''
+                          ? 'text-white'
+                          : 'text-gray-600 hover:text-gray-800'
+                      }`}
+                      style={selectedLeaveType === '' ? { backgroundColor: '#8200db' } : {}}
+                    >
+                      All Types
+                      {selectedLeaveType === '' && (
+                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-white"></div>
+                      )}
+                    </button>
+                    {leaveTypes.map((type) => (
+                      <button
+                        key={type.id}
+                        onClick={() => setSelectedLeaveType(type.name)}
+                        className={`px-6 py-3 font-medium text-sm transition-all relative ${
+                          selectedLeaveType === type.name
+                            ? 'text-white'
+                            : 'text-gray-600 hover:text-gray-800'
+                        }`}
+                        style={selectedLeaveType === type.name ? { backgroundColor: '#8200db' } : {}}
+                      >
+                        {type.name}
+                        {availableDays[type.name] !== undefined && (
+                          <span className="ml-2 text-xs font-normal">
+                            ({availableDays[type.name].toFixed(2)} Days Available)
+                          </span>
+                        )}
+                        {selectedLeaveType === type.name && (
+                          <div className="absolute bottom-0 left-0 right-0 h-1 bg-white"></div>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Search and Filter */}
+            <div className="mb-6">
+              <div className="bg-white rounded-lg border-2 border-gray-200 p-4">
+                <div className="flex space-x-4">
+                  <input
+                    type="text"
+                    placeholder={isEmployee || (isHRorPayroll && viewMode === 'my') ? "Search by leave type or reason..." : "Search by name or employee ID..."}
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="flex-1 px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
+                  />
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    className="px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
+                  >
+                    <option value="">All Status</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Approved">Approved</option>
+                    <option value="Rejected">Rejected</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+
+            {/* Leaves Table */}
+            <div className="bg-white border-2 border-gray-200 rounded-lg overflow-hidden shadow-md">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr style={{ backgroundColor: '#8200db' }}>
+                      {(isEmployee || (isHRorPayroll && viewMode === 'my')) ? null : (
+                        <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Name</th>
+                      )}
+                      <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Start Date</th>
+                      <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">End Date</th>
+                      <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Time off Type</th>
+                      <th className="text-center py-2 px-4 font-semibold text-white text-xs uppercase">Status</th>
+                      <th className="text-center py-2 px-4 font-semibold text-white text-xs uppercase">Attachment</th>
+                      {canApprove && <th className="text-center py-2 px-4 font-semibold text-white text-xs uppercase">Actions</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {leaves.length === 0 ? (
+                      <tr>
+                        <td colSpan={(isEmployee || (isHRorPayroll && viewMode === 'my')) ? (canApprove ? 6 : 5) : (canApprove ? 7 : 6)} className="text-center py-8 text-gray-500 text-sm">
+                          No leave requests found
+                        </td>
+                      </tr>
+                    ) : (
+                      leaves.map((leave, index) => (
+                        <tr key={leave.id} className={`border-b border-gray-100 hover:bg-gray-50 transition-all ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                          {(isEmployee || (isHRorPayroll && viewMode === 'my')) ? null : (
+                            <td className="py-2 px-4 text-sm text-gray-800">
+                              {leave.first_name} {leave.last_name}
+                            </td>
+                          )}
+                          <td className="py-2 px-4 text-sm text-gray-800">{formatDate(leave.start_date)}</td>
+                          <td className="py-2 px-4 text-sm text-gray-800">{formatDate(leave.end_date)}</td>
+                          <td className="py-2 px-4 text-sm text-gray-800">{leave.leave_type}</td>
+                          <td className="py-2 px-4 text-center">
+                            <span
+                              className={`px-2 py-1 rounded text-xs font-medium ${
+                                leave.status === 'Approved'
+                                  ? 'bg-green-100 text-green-800 border border-green-300'
+                                  : leave.status === 'Rejected'
+                                  ? 'bg-red-100 text-red-800 border border-red-300'
+                                  : 'bg-yellow-100 text-yellow-800 border border-yellow-300'
+                              }`}
+                            >
+                              {leave.status}
+                            </span>
+                          </td>
+                          <td className="py-2 px-4 text-center">
+                            {leave.attachment_url ? (
+                              <button
+                                onClick={() => setViewingAttachment(leave.attachment_url)}
+                                className="text-blue-600 hover:text-blue-800 hover:underline text-sm font-medium"
+                              >
+                                📎 View
+                              </button>
+                            ) : (
+                              <span className="text-gray-400 text-sm">-</span>
+                            )}
+                          </td>
+                          {canApprove && (
+                            <td className="py-2 px-4 text-center">
+                              {leave.status === 'Pending' ? (
+                                <div className="flex space-x-2 justify-center">
+                                  <button
+                                    onClick={() => handleStatusChange(leave.id, 'Approved')}
+                                    disabled={changingStatus === leave.id}
+                                    className="px-3 py-1 bg-green-600 text-white rounded text-xs font-medium shadow-sm hover:shadow-md transition-all disabled:opacity-50"
+                                  >
+                                    {changingStatus === leave.id ? 'Processing...' : 'Approve'}
+                                  </button>
+                                  <button
+                                    onClick={() => handleStatusChange(leave.id, 'Rejected')}
+                                    disabled={changingStatus === leave.id}
+                                    className="px-3 py-1 bg-red-600 text-white rounded text-xs font-medium shadow-sm hover:shadow-md transition-all disabled:opacity-50"
+                                  >
+                                    {changingStatus === leave.id ? 'Processing...' : 'Reject'}
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-gray-400 text-sm">-</span>
+                              )}
+                            </td>
+                          )}
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Attachment Viewer Modal */}
       {viewingAttachment && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 bg-gray-40 bg-opacity-10 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl">
             <div className="flex justify-between items-center p-4 border-b">
               <h2 className="text-lg font-semibold">View Attachment</h2>
               <button
@@ -326,7 +528,6 @@ const Leaves = () => {
             </div>
             <div className="flex-1 overflow-auto p-4">
               {(() => {
-                // Check if it's a PDF - check URL extension or Cloudinary raw resource
                 const urlLower = viewingAttachment.toLowerCase();
                 const isPDF = urlLower.endsWith('.pdf') || 
                              urlLower.includes('/raw/') ||
@@ -335,23 +536,12 @@ const Leaves = () => {
                              (urlLower.includes('cloudinary.com') && urlLower.includes('.pdf'));
                 
                 if (isPDF) {
-                  // For Cloudinary PDFs, use the original URL as stored
                   let pdfUrl = viewingAttachment;
-                  
-                  // Ensure URL has proper protocol
                   if (!pdfUrl.startsWith('http://') && !pdfUrl.startsWith('https://')) {
                     pdfUrl = 'https://' + pdfUrl;
                   }
-                  
-                  // Check if PDF is stored as image resource (old uploads)
-                  // PDFs stored as images in Cloudinary cannot be viewed directly in iframe
                   const isImageResource = pdfUrl.includes('/image/upload/');
-                  
-                  // Use Google Docs Viewer for image resources or if user prefers it
                   const googleDocsViewer = `https://docs.google.com/viewer?url=${encodeURIComponent(pdfUrl)}&embedded=true`;
-                  
-                  // For image resources, always use Google Docs Viewer
-                  // For raw resources, allow direct view or Google Docs Viewer
                   const finalUrl = (isImageResource || useGoogleViewer) ? googleDocsViewer : pdfUrl;
                   
                   return (
@@ -404,17 +594,10 @@ const Leaves = () => {
                              (urlLower.includes('/documents/') && urlLower.includes('.pdf')) ||
                              (urlLower.includes('cloudinary.com') && urlLower.includes('.pdf'));
                 
-                // Fix URL for Cloudinary PDFs - use original URL as stored
                 let fixedUrl = viewingAttachment;
-                
-                // Ensure URL has proper protocol
                 if (!fixedUrl.startsWith('http://') && !fixedUrl.startsWith('https://')) {
                   fixedUrl = 'https://' + fixedUrl;
                 }
-                
-                // Don't convert URL - use it as stored in database
-                // Existing PDFs uploaded as images should be accessed as images
-                // New PDFs will be uploaded as raw resources
                 
                 return (
                   <>
@@ -447,26 +630,52 @@ const Leaves = () => {
 
       {/* Leave Request Form Modal */}
       {showApplyLeave && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <h2 className="text-xl font-bold mb-4">Time off Type Request</h2>
-            <form onSubmit={handleApplyLeave} className="space-y-4">
+        <div className="fixed inset-0 bg-gray-40 bg-opacity-10 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto border-2" style={{ borderColor: '#8200db' }}>
+            <div className="mb-4 pb-3 border-b-2" style={{ borderColor: '#8200db' }}>
+              <h2 className="text-xl font-bold" style={{ color: '#8200db' }}>Time off Type Request</h2>
+              <p className="text-xs text-gray-600 mt-1">Submit a new time off request</p>
+            </div>
+            <form onSubmit={handleApplyLeave} className="space-y-4 mt-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Employee</label>
-                <input
-                  type="text"
-                  value={`${user?.employee?.first_name || ''} ${user?.employee?.last_name || ''}`.trim() || user?.loginId || 'Employee'}
-                  disabled
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
-                />
+                <label className="block text-xs font-medium text-gray-700 mb-1">Employee *</label>
+                {isAdmin ? (
+                  <select
+                    value={selectedEmployeeId || ''}
+                    onChange={(e) => {
+                      const empId = e.target.value ? parseInt(e.target.value) : null;
+                      setSelectedEmployeeId(empId);
+                      if (empId) {
+                        fetchAvailableDays(empId);
+                      }
+                    }}
+                    required
+                    disabled={loadingEmployees}
+                    className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
+                  >
+                    <option value="">Select Employee</option>
+                    {employees.map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.employee_id} - {emp.first_name} {emp.last_name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={`${user?.employee?.first_name || ''} ${user?.employee?.last_name || ''}`.trim() || user?.loginId || 'Employee'}
+                    disabled
+                    className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-gray-50"
+                  />
+                )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Time off Type *</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Time off Type *</label>
                 <select
                   value={applyLeaveData.leaveType}
                   onChange={(e) => setApplyLeaveData({ ...applyLeaveData, leaveType: e.target.value })}
                   required
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                 >
                   <option value="">Select Time off Type</option>
                   {leaveTypes.map((type) => (
@@ -477,7 +686,7 @@ const Leaves = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Validity Period *</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Validity Period *</label>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs text-gray-500 mb-1">From</label>
@@ -486,7 +695,7 @@ const Leaves = () => {
                       value={applyLeaveData.startDate}
                       onChange={(e) => setApplyLeaveData({ ...applyLeaveData, startDate: e.target.value })}
                       required
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     />
                   </div>
                   <div>
@@ -497,22 +706,22 @@ const Leaves = () => {
                       onChange={(e) => setApplyLeaveData({ ...applyLeaveData, endDate: e.target.value })}
                       required
                       min={applyLeaveData.startDate}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     />
                   </div>
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Allocation</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Allocation</label>
                 <input
                   type="text"
                   value={`${calculatedDays.toFixed(2)} Days`}
                   disabled
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-gray-50"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-xs font-medium text-gray-700 mb-1">
                   Attachment {applyLeaveData.leaveType === 'Sick time off' && '(For sick leave certificate)'}
                 </label>
                 <input
@@ -520,7 +729,7 @@ const Leaves = () => {
                   accept="image/*,.pdf,application/pdf"
                   onChange={handleAttachmentChange}
                   disabled={uploadingAttachment}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                 />
                 <p className="mt-1 text-xs text-gray-500">Accepted formats: PDF, JPG, PNG, GIF, WEBP (Max 10MB)</p>
                 {applyLeaveData.attachment && (
@@ -541,20 +750,21 @@ const Leaves = () => {
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Reason/Notes</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Reason/Notes</label>
                 <textarea
                   value={applyLeaveData.reason}
                   onChange={(e) => setApplyLeaveData({ ...applyLeaveData, reason: e.target.value })}
                   rows="3"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                   placeholder="Optional reason for leave"
                 />
               </div>
-              <div className="flex justify-end space-x-4 pt-4">
+              <div className="flex justify-end space-x-2 pt-4 border-t-2 border-gray-200">
                 <button
                   type="button"
                   onClick={() => {
                     setShowApplyLeave(false);
+                    setSelectedEmployeeId(null);
                     setApplyLeaveData({
                       leaveType: '',
                       startDate: '',
@@ -564,111 +774,23 @@ const Leaves = () => {
                     });
                     setCalculatedDays(0);
                   }}
-                  className="px-6 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  className="px-4 py-2 border-2 border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-all font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                  disabled={submittingLeave}
+                  className="px-4 py-2 rounded-lg text-sm text-white transition-all font-medium shadow-md hover:shadow-lg disabled:opacity-50"
+                  style={{ backgroundColor: '#8200db' }}
                 >
-                  Submit
+                  {submittingLeave ? 'Submitting...' : 'Submit'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
-
-      {/* Leaves Table */}
-      <div className="bg-white rounded-lg shadow-md overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                {(isEmployee || (isHRorPayroll && viewMode === 'my')) ? null : (
-                  <th className="text-left py-3 px-4 font-semibold text-gray-700">Name</th>
-                )}
-                <th className="text-left py-3 px-4 font-semibold text-gray-700">Start Date</th>
-                <th className="text-left py-3 px-4 font-semibold text-gray-700">End Date</th>
-                <th className="text-left py-3 px-4 font-semibold text-gray-700">Time off Type</th>
-                <th className="text-left py-3 px-4 font-semibold text-gray-700">Status</th>
-                <th className="text-left py-3 px-4 font-semibold text-gray-700">Attachment</th>
-                {canApprove && <th className="text-left py-3 px-4 font-semibold text-gray-700">Actions</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {leaves.length === 0 ? (
-                <tr>
-                  <td colSpan={(isEmployee || (isHRorPayroll && viewMode === 'my')) ? (canApprove ? 6 : 5) : (canApprove ? 7 : 6)} className="text-center py-8 text-gray-500">
-                    No leave requests found
-                  </td>
-                </tr>
-              ) : (
-                leaves.map((leave) => (
-                  <tr key={leave.id} className="border-b hover:bg-gray-50">
-                    {(isEmployee || (isHRorPayroll && viewMode === 'my')) ? null : (
-                      <td className="py-3 px-4">
-                        {leave.first_name} {leave.last_name}
-                      </td>
-                    )}
-                    <td className="py-3 px-4">{formatDate(leave.start_date)}</td>
-                    <td className="py-3 px-4">{formatDate(leave.end_date)}</td>
-                    <td className="py-3 px-4">{leave.leave_type}</td>
-                    <td className="py-3 px-4">
-                      <span
-                        className={`px-3 py-1 rounded-full text-sm font-medium ${
-                          leave.status === 'Approved'
-                            ? 'bg-green-100 text-green-800'
-                            : leave.status === 'Rejected'
-                            ? 'bg-red-100 text-red-800'
-                            : 'bg-yellow-100 text-yellow-800'
-                        }`}
-                      >
-                        {leave.status}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      {leave.attachment_url ? (
-                        <button
-                          onClick={() => setViewingAttachment(leave.attachment_url)}
-                          className="text-blue-600 hover:text-blue-800 hover:underline text-sm"
-                        >
-                          📎 View
-                        </button>
-                      ) : (
-                        <span className="text-gray-400 text-sm">-</span>
-                      )}
-                    </td>
-                    {canApprove && (
-                      <td className="py-3 px-4">
-                        {leave.status === 'Pending' ? (
-                          <div className="flex space-x-3">
-                            <button
-                              onClick={() => handleStatusChange(leave.id, 'Approved')}
-                              className="text-green-600 hover:text-green-800 font-medium"
-                            >
-                              Approve
-                            </button>
-                            <button
-                              onClick={() => handleStatusChange(leave.id, 'Rejected')}
-                              className="text-red-600 hover:text-red-800 font-medium"
-                            >
-                              Reject
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
-                      </td>
-                    )}
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
     </div>
   );
 };

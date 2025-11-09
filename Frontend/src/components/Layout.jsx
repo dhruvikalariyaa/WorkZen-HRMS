@@ -147,8 +147,8 @@ const Layout = ({ children }) => {
   return (
     <div className="flex h-screen bg-gray-50">
       {/* Sidebar */}
-      <aside className="w-64 bg-white shadow-sm border-r border-gray-100 flex flex-col">
-        <div className="p-6 border-b border-gray-100">
+      <aside className="w-64 bg-white shadow-lg border-r-2 border-gray-200 flex flex-col">
+        <div className="p-6 border-b-2 border-gray-200">
           {companyLogo && companyLogo.trim() !== '' ? (
             <Link to="/dashboard" className="flex items-center justify-center cursor-pointer">
               <img 
@@ -167,8 +167,8 @@ const Layout = ({ children }) => {
             </Link>
           ) : (
             <Link to="/dashboard" className="text-center cursor-pointer block">
-              <h1 className="text-2xl font-bold text-purple-600">WorkZen</h1>
-              <p className="text-sm text-gray-500 mt-1">HRMS</p>
+              <h1 className="text-2xl font-bold" style={{ color: '#8200db' }}>WorkZen</h1>
+              <p className="text-xs text-gray-500 mt-1">HRMS</p>
             </Link>
           )}
         </div>
@@ -179,11 +179,15 @@ const Layout = ({ children }) => {
               to={item.path}
               className={`flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-all duration-200 ${
                 location.pathname === item.path 
-                  ? 'bg-purple-50 text-purple-600 shadow-sm' 
-                  : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                  ? 'bg-purple-50 shadow-md border-2' 
+                  : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900 border-2 border-transparent'
               }`}
+              style={location.pathname === item.path ? { 
+                color: '#8200db', 
+                borderColor: '#8200db' 
+              } : {}}
             >
-              <span className={`mr-3 ${location.pathname === item.path ? 'text-purple-600' : 'text-gray-500'}`}>
+              <span className={`mr-3 ${location.pathname === item.path ? '' : 'text-gray-500'}`} style={location.pathname === item.path ? { color: '#8200db' } : {}}>
                 {item.icon}
               </span>
               <span>{item.label}</span>
@@ -195,25 +199,25 @@ const Layout = ({ children }) => {
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
-        <header className="bg-white shadow-sm border-b border-gray-100 px-6 py-2 flex justify-between items-center h-[110px]">
+        <header className="bg-white shadow-lg border-b-2 border-gray-200 px-6 py-4 flex justify-between items-center">
           <div>
-            <h2 className="text-2xl font-semibold text-gray-900">
+            <h2 className="text-2xl font-semibold" style={{ color: '#8200db' }}>
               {menuItems.find(item => item.path === location.pathname)?.label || 'Dashboard'}
             </h2>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <p className="text-xs text-gray-500 mt-1">
               {new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
             </p>
           </div>
           <div className="relative profile-menu-container">
             <button
               onClick={() => setShowProfileMenu(!showProfileMenu)}
-              className="flex items-center space-x-3 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 rounded-lg px-2 py-1.5 hover:bg-gray-50 transition-colors"
+              className="flex items-center space-x-3 focus:outline-none rounded-lg px-3 py-2 hover:bg-gray-50 transition-colors border-2 border-transparent hover:border-gray-200"
             >
-              <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold shadow-sm">
+              <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold shadow-md border-2" style={{ background: '#8200db', borderColor: '#8200db' }}>
                 {user?.employee?.first_name?.[0] || user?.loginId?.[0] || user?.email?.[0] || 'U'}
               </div>
               <div className="text-left hidden md:block">
-                <p className="text-s font-medium text-gray-900">
+                <p className="text-sm font-medium text-gray-900">
                   {user?.employee?.first_name || user?.loginId || user?.email || 'User'}
                 </p>
                 <p className="text-xs text-gray-500 capitalize">{user?.role || 'User'}</p>
@@ -223,8 +227,8 @@ const Layout = ({ children }) => {
               </svg>
             </button>
             {showProfileMenu && (
-              <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-gray-100 py-2 z-50">
-                <div className="px-4 py-3 border-b border-gray-100">
+              <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border-2 border-gray-200 py-2 z-50">
+                <div className="px-4 py-3 border-b-2 border-gray-200">
                   <p className="text-sm font-medium text-gray-900">
                     {user?.employee?.first_name || user?.loginId || user?.email || 'User'}
                   </p>
@@ -242,16 +246,16 @@ const Layout = ({ children }) => {
                       navigate('/profile');
                     }
                   }}
-                  className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center"
+                  className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center border-2 border-transparent hover:border-gray-100"
                 >
-                  <svg className="w-4 h-4 mr-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4 mr-3" style={{ color: '#8200db' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                   </svg>
                   My Profile
                 </button>
                 <button
                   onClick={handleLogout}
-                  className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors flex items-center"
+                  className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors flex items-center border-2 border-transparent hover:border-red-100"
                 >
                   <svg className="w-4 h-4 mr-3 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />

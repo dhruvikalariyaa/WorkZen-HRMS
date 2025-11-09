@@ -147,7 +147,7 @@ router.get('/summary', authenticate, authorize('Employee', 'HR Officer', 'Payrol
       }
     });
     
-    // Calculate actual leave DAYS (excluding weekends)
+    // Calculate actual leave DAYS (including all calendar days)
     // Use Set to avoid double-counting overlapping leave dates
     const leaveDatesSet = new Set();
     const dateRangeStart = new Date(startDate);
@@ -172,20 +172,24 @@ router.get('/summary', authenticate, authorize('Employee', 'HR Officer', 'Payrol
       const rangeStart = new Date(rangeStartStr + 'T00:00:00');
       const rangeEnd = new Date(rangeEndStr + 'T00:00:00');
       
-      // Count only weekdays within the date range
+      // Count all calendar days within the date range (including weekends)
       // Use >= and <= to include boundary dates
       const actualStart = leaveStart >= rangeStart ? leaveStart : rangeStart;
       const actualEnd = leaveEnd <= rangeEnd ? leaveEnd : rangeEnd;
       
       // Only process if there's an overlap
       if (actualStart <= actualEnd) {
-        for (let d = new Date(actualStart); d <= actualEnd; d.setDate(d.getDate() + 1)) {
-          const dayOfWeek = d.getDay();
-          if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Exclude Sunday (0) and Saturday (6)
-            // Use date string as key to avoid duplicates
-            const dateStr = d.toISOString().split('T')[0];
-            leaveDatesSet.add(dateStr);
-          }
+        // Calculate the difference in days
+        const timeDiff = actualEnd.getTime() - actualStart.getTime();
+        const daysDiff = Math.ceil(timeDiff / (1000 * 60 * 60 * 24)) + 1; // +1 to include both start and end dates
+        
+        // Add all days in the range
+        for (let i = 0; i < daysDiff; i++) {
+          const d = new Date(actualStart);
+          d.setDate(d.getDate() + i);
+          // Use date string as key to avoid duplicates
+          const dateStr = d.toISOString().split('T')[0];
+          leaveDatesSet.add(dateStr);
         }
       }
     });
@@ -305,15 +309,6 @@ router.get('/', authenticate, async (req, res) => {
       params.push(req.query.startDate, req.query.endDate);
     }
 
-    // Search
-    if (req.query.search) {
-      conditions.push(`(
-        e.first_name ILIKE $${params.length + 1} OR
-        e.last_name ILIKE $${params.length + 1} OR
-        e.employee_id ILIKE $${params.length + 1}
-      )`);
-      params.push(`%${req.query.search}%`);
-    }
 
     if (conditions.length > 0) {
       query += ' WHERE ' + conditions.join(' AND ');
