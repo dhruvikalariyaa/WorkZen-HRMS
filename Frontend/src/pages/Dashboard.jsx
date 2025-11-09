@@ -121,8 +121,8 @@ const Dashboard = () => {
         api.get('/dashboard/analytics/attendance-trends').catch(() => ({ data: [] })),
         api.get('/dashboard/analytics/leave-distribution').catch(() => ({ data: [] }))
       ]).then(([trendsRes, leaveRes]) => {
-        setAttendanceTrends(trendsRes.data);
-        setLeaveDistribution(leaveRes.data);
+      setAttendanceTrends(trendsRes.data);
+      setLeaveDistribution(leaveRes.data);
       }).catch(error => {
         console.error('Failed to load analytics:', error);
       });
@@ -147,9 +147,9 @@ const Dashboard = () => {
         api.get('/dashboard/analytics/leave-distribution').catch(() => ({ data: [] })),
         api.get('/dashboard/analytics/payroll-summary').catch(() => ({ data: [] }))
       ]).then(([trendsRes, leaveRes, payrollRes]) => {
-        setAttendanceTrends(trendsRes.data);
-        setLeaveDistribution(leaveRes.data);
-        setPayrollSummary(payrollRes.data);
+      setAttendanceTrends(trendsRes.data);
+      setLeaveDistribution(leaveRes.data);
+      setPayrollSummary(payrollRes.data);
       }).catch(error => {
         console.error('Failed to load analytics:', error);
       });
@@ -246,7 +246,7 @@ const Dashboard = () => {
           ) : (
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div className="flex-1 space-y-2">
-                {checkInStatus.checkedIn && !checkInStatus.checkedOut && (
+              {checkInStatus.checkedIn && !checkInStatus.checkedOut && (
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-2">
                       <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -255,19 +255,19 @@ const Dashboard = () => {
                       <p className="text-sm font-medium text-gray-900">Checked in at <span className="text-green-600">{checkInStatus.checkIn}</span></p>
                     </div>
                     <p className="text-xs text-gray-600 ml-7">Working since {checkInTime ? formatTimeSince(checkInTime) : 'checking...'}</p>
-                    {(currentExtraHours > 0 || currentExtraMinutes > 0) && (
+                  {(currentExtraHours > 0 || currentExtraMinutes > 0) && (
                       <div className="ml-7 mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 border-2 border-orange-200 rounded-lg">
                         <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                         <p className="text-xs font-medium text-orange-600">
-                          Extra Time: {currentExtraHours > 0 && `${currentExtraHours}h `}{currentExtraMinutes > 0 && `${currentExtraMinutes}m`}
-                        </p>
+                      Extra Time: {currentExtraHours > 0 && `${currentExtraHours}h `}{currentExtraMinutes > 0 && `${currentExtraMinutes}m`}
+                    </p>
                       </div>
-                    )}
-                  </div>
-                )}
-                {checkInStatus.checkedIn && checkInStatus.checkedOut && (
+                  )}
+                </div>
+              )}
+              {checkInStatus.checkedIn && checkInStatus.checkedOut && (
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-2">
                       <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -279,43 +279,43 @@ const Dashboard = () => {
                       <p className="text-xs text-gray-600">Checked in: <span className="font-medium text-gray-900">{checkInStatus.checkIn}</span></p>
                       <p className="text-xs text-gray-600">Checked out: <span className="font-medium text-gray-900">{checkInStatus.checkOut}</span></p>
                     </div>
-                  </div>
-                )}
-                {!checkInStatus.checkedIn && (
+                </div>
+              )}
+              {!checkInStatus.checkedIn && (
                   <div className="flex items-center gap-2">
                     <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    <p className="text-sm text-gray-600">Not checked in yet</p>
+                <p className="text-sm text-gray-600">Not checked in yet</p>
                   </div>
-                )}
-              </div>
-              <div className="flex gap-3">
-                {!checkInStatus.checkedIn ? (
-                  <button
-                    onClick={handleCheckIn}
+              )}
+            </div>
+            <div className="flex gap-3">
+              {!checkInStatus.checkedIn ? (
+                <button
+                  onClick={handleCheckIn}
                     disabled={checkingIn}
                     className="bg-green-600 text-white px-6 py-2.5 rounded-lg hover:bg-green-700 font-medium transition-all disabled:opacity-50 flex items-center gap-2 shadow-md hover:shadow-lg border-2 border-green-700"
-                  >
+                >
                     {checkingIn && (
                       <div className="inline-block animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
                     )}
                     {checkingIn ? 'Clocking In...' : 'Clock In'}
-                  </button>
-                ) : !checkInStatus.checkedOut ? (
-                  <button
-                    onClick={handleCheckOut}
+                </button>
+              ) : !checkInStatus.checkedOut ? (
+                <button
+                  onClick={handleCheckOut}
                     disabled={checkingOut}
                     className="bg-red-600 text-white px-6 py-2.5 rounded-lg hover:bg-red-700 font-medium transition-all disabled:opacity-50 flex items-center gap-2 shadow-md hover:shadow-lg border-2 border-red-700"
-                  >
+                >
                     {checkingOut && (
                       <div className="inline-block animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
                     )}
                     {checkingOut ? 'Clocking Out...' : 'Clock Out'}
-                  </button>
-                ) : null}
-              </div>
+                </button>
+              ) : null}
             </div>
+          </div>
           )}
         </div>
 
@@ -478,19 +478,19 @@ const Dashboard = () => {
           </div>
 
           {/* Leave Distribution Chart */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900">Leave Distribution</h2>
-                <p className="text-sm text-gray-500 mt-1">Last 30 days breakdown</p>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">Leave Distribution</h2>
+                  <p className="text-sm text-gray-500 mt-1">Last 30 days breakdown</p>
+                </div>
+                <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                  <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+                  </svg>
+                </div>
               </div>
-              <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
-                </svg>
-              </div>
-            </div>
             {leaveDistribution.length > 0 ? (
               <ResponsiveContainer width="100%" height={320}>
                 <PieChart>
@@ -527,8 +527,8 @@ const Dashboard = () => {
                 </svg>
                 <p className="text-sm font-medium">No data found</p>
                 <p className="text-xs text-gray-500 mt-1">No leave distribution data available</p>
-              </div>
-            )}
+            </div>
+          )}
           </div>
         </div>
       </div>
@@ -637,8 +637,8 @@ const Dashboard = () => {
                 <p className="text-xs font-medium text-gray-600 mb-1">Pending Leave Requests</p>
                 {stats.pendingLeaves > 0 ? (
                   <>
-                    <p className="text-2xl font-bold text-orange-600">{stats.pendingLeaves}</p>
-                    <p className="text-xs text-gray-500 mt-0.5">Awaiting approval</p>
+                <p className="text-2xl font-bold text-orange-600">{stats.pendingLeaves}</p>
+                <p className="text-xs text-gray-500 mt-0.5">Awaiting approval</p>
                   </>
                 ) : (
                   <>
@@ -748,19 +748,19 @@ const Dashboard = () => {
         </div>
 
         {/* Leave Distribution Chart */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-lg font-semibold text-gray-900">Leave Distribution</h2>
-              <p className="text-sm text-gray-500 mt-1">Last 30 days breakdown</p>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Leave Distribution</h2>
+                <p className="text-sm text-gray-500 mt-1">Last 30 days breakdown</p>
+              </div>
+              <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+                </svg>
+              </div>
             </div>
-            <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-              <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
-              </svg>
-            </div>
-          </div>
           {leaveDistribution.length > 0 ? (
             <ResponsiveContainer width="100%" height={320}>
               <PieChart>
@@ -797,8 +797,8 @@ const Dashboard = () => {
               </svg>
               <p className="text-sm font-medium">No data found</p>
               <p className="text-xs text-gray-500 mt-1">No leave distribution data available</p>
-            </div>
-          )}
+          </div>
+        )}
         </div>
       </div>
 

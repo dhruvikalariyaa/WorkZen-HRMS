@@ -161,27 +161,27 @@ const Employees = () => {
           {/* Header */}
           <div className="p-6 border-b-2 border-gray-200">
             <div className="flex justify-between items-center">
-              <div>
+    <div>
                 
               </div>
               <div className="flex items-center gap-3">
-                <input
-                  type="text"
+          <input
+            type="text"
                   placeholder="Search by name or employee ID..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
                   className="px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
-                />
-                {['Admin', 'HR Officer'].includes(user?.role) && (
-                  <button
-                    onClick={() => navigate('/employee-info')}
+          />
+        {['Admin', 'HR Officer'].includes(user?.role) && (
+          <button
+            onClick={() => navigate('/employee-info')}
                     className="px-4 py-2 rounded-lg text-sm text-white transition-all font-medium shadow-md hover:shadow-lg"
                     style={{ backgroundColor: '#8200db' }}
-                  >
-                    NEW
-                  </button>
-                )}
-              </div>
+          >
+            NEW
+          </button>
+        )}
+      </div>
             </div>
           </div>
 
@@ -246,7 +246,7 @@ const Employees = () => {
                                 </svg>
                                 Send Credentials
                               </button>
-                              <button
+              <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setActionMenuOpen(null);
@@ -258,7 +258,7 @@ const Employees = () => {
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                 </svg>
                                 Delete
-                              </button>
+              </button>
                             </div>
                           )}
                         </div>
@@ -319,7 +319,7 @@ const Employees = () => {
             {/* Header */}
             <div className="flex-shrink-0 border-b-2 border-gray-200 px-5 py-4">
               <div className="flex justify-between items-center">
-                <div>
+              <div>
                   <h2 className="text-xl font-bold" style={{ color: '#8200db' }}>Employee Details</h2>
                   <p className="text-xs text-gray-600 mt-0.5">Complete employee information</p>
                 </div>
@@ -355,15 +355,15 @@ const Employees = () => {
               {/* Profile Section */}
               <div className="bg-gray-50 rounded-lg p-4 mb-4 border-2 border-gray-200">
                 <div className="flex items-center space-x-4">
-                  <div>
-                    {selectedEmployee.profile_image_url ? (
-                      <img
-                        src={selectedEmployee.profile_image_url}
-                        alt={`${selectedEmployee.first_name} ${selectedEmployee.last_name}`}
+              <div>
+                  {selectedEmployee.profile_image_url ? (
+                    <img
+                      src={selectedEmployee.profile_image_url}
+                      alt={`${selectedEmployee.first_name} ${selectedEmployee.last_name}`}
                         className="w-16 h-16 rounded-full object-cover border-2"
                         style={{ borderColor: '#8200db' }}
-                      />
-                    ) : (
+                    />
+                  ) : (
                       <div className="w-16 h-16 rounded-full flex items-center justify-center border-2 text-2xl font-bold" style={{ backgroundColor: '#8200db20', borderColor: '#8200db', color: '#8200db' }}>
                         {selectedEmployee.first_name?.[0]?.toUpperCase() || 'E'}
                       </div>
@@ -473,16 +473,16 @@ const Employees = () => {
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                       </svg>
                       <p className="text-xs font-medium text-gray-600">Position</p>
-                    </div>
+              </div>
                     <p className="text-sm font-semibold text-gray-900">{selectedEmployee.position || '-'}</p>
-                  </div>
+              </div>
                   <div className="bg-white border-2 border-gray-200 rounded-lg p-3">
                     <div className="flex items-center mb-1.5">
                       <svg className="w-4 h-4 mr-1.5" style={{ color: '#8200db' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>
                       <p className="text-xs font-medium text-gray-600">Hire Date</p>
-                    </div>
+              </div>
                     <p className="text-sm font-semibold text-gray-900">
                       {selectedEmployee.hire_date 
                         ? new Date(selectedEmployee.hire_date).toLocaleDateString('en-GB', { 
@@ -492,17 +492,17 @@ const Employees = () => {
                           })
                         : '-'}
                     </p>
-                  </div>
+              </div>
                   <div className="bg-white border-2 border-gray-200 rounded-lg p-3">
                     <div className="flex items-center mb-1.5">
                       <svg className="w-4 h-4 mr-1.5" style={{ color: '#8200db' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
                       <p className="text-xs font-medium text-gray-600">Salary</p>
-                    </div>
+              </div>
                     <p className="text-sm font-semibold text-gray-900">{selectedEmployee.salary ? `₹${parseFloat(selectedEmployee.salary).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}</p>
-                  </div>
-                </div>
+              </div>
+              </div>
               </div>
             </div>
 

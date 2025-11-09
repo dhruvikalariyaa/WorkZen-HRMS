@@ -67,11 +67,11 @@ router.get('/', authenticate, async (req, res) => {
         )`);
       } else {
         // For admin/manager viewing all: search by employee name or ID
-        conditions.push(`(
-          e.first_name ILIKE $${params.length + 1} OR
-          e.last_name ILIKE $${params.length + 1} OR
-          e.employee_id ILIKE $${params.length + 1}
-        )`);
+      conditions.push(`(
+        e.first_name ILIKE $${params.length + 1} OR
+        e.last_name ILIKE $${params.length + 1} OR
+        e.employee_id ILIKE $${params.length + 1}
+      )`);
       }
       params.push(`%${req.query.search}%`);
     }
@@ -178,14 +178,14 @@ router.post('/', authenticate, authorize('Admin', 'Employee', 'HR Officer', 'Pay
       
       employeeId = providedEmployeeId;
     } else {
-      const employeeResult = await pool.query(
-        'SELECT id FROM employees WHERE user_id = $1',
-        [req.user.id]
-      );
+    const employeeResult = await pool.query(
+      'SELECT id FROM employees WHERE user_id = $1',
+      [req.user.id]
+    );
 
-      if (employeeResult.rows.length === 0) {
-        return res.status(404).json({ error: 'Employee not found' });
-      }
+    if (employeeResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Employee not found' });
+    }
 
       employeeId = employeeResult.rows[0].id;
     }

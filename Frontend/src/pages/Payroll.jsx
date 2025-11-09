@@ -293,7 +293,7 @@ const Payroll = () => {
     <div className="min-h-screen bg-gray-50">
       {/* Generate Payroll Confirmation Modal */}
       {showGenerateConfirm && (
-        <div className="fixed inset-0 bg-gray-40 bg-opacity-10 backdrop-blur-sm flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-gray-40 bg-opacity-10 backdrop-blur-sm flex items-center justify-center z-[60]">
           <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md mx-4 border-2 border-[#8200db]">
             <div className="flex items-center mb-4">
               <div className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center mr-3" style={{ backgroundColor: '#8200db20' }}>
@@ -338,7 +338,7 @@ const Payroll = () => {
 
       {/* Validate Payrun Confirmation Modal */}
       {showValidatePayrunConfirm && payrunToValidate && (
-        <div className="fixed inset-0 bg-gray-40 bg-opacity-10 backdrop-blur-sm flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-gray-40 bg-opacity-10 backdrop-blur-sm flex items-center justify-center z-[60]">
           <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md mx-4 border-2 border-[#8200db]">
             <div className="flex items-center mb-4">
               <div className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center mr-3" style={{ backgroundColor: '#8200db20' }}>

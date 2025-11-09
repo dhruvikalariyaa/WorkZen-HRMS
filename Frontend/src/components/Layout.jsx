@@ -154,7 +154,7 @@ const Layout = ({ children }) => {
               <img 
                 src={companyLogo} 
                 alt="Company Logo" 
-                className="h-16 w-auto object-contain max-w-[180px]"
+                className="h-11 w-auto object-contain max-w-[150px]"
                 onError={(e) => {
                   console.error('Failed to load logo image:', companyLogo);
                   console.error('Image error details:', e);

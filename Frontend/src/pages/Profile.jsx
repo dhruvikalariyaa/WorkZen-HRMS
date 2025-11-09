@@ -551,32 +551,32 @@ const Profile = () => {
             {/* Header */}
             <div className="p-4 border-b-2 border-gray-200">
               <div className="flex justify-between items-center">
-                <div>
+      <div>
                   <h1 className="text-xl font-semibold" style={{ color: '#8200db' }}>My Profile</h1>
                   <p className="text-xs text-gray-500 mt-0.5">Manage your profile information</p>
                 </div>
-                {canSelectEmployee && employees.length > 0 && (
-                  <select
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        handleEmployeeSelect(e.target.value);
-                      }
-                    }}
+          {canSelectEmployee && employees.length > 0 && (
+            <select
+              onChange={(e) => {
+                if (e.target.value) {
+                  handleEmployeeSelect(e.target.value);
+                }
+              }}
                     className="px-3 py-1.5 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
-                  >
-                    <option value="">-- View Other Employee --</option>
-                    {employees.map((emp) => (
-                      <option key={emp.id} value={emp.id}>
-                        {emp.employee_id} - {emp.first_name} {emp.last_name}
-                      </option>
-                    ))}
-                  </select>
-                )}
+            >
+              <option value="">-- View Other Employee --</option>
+              {employees.map((emp) => (
+                <option key={emp.id} value={emp.id}>
+                  {emp.employee_id} - {emp.first_name} {emp.last_name}
+                </option>
+              ))}
+            </select>
+          )}
               </div>
-            </div>
+        </div>
 
             <div className="p-6">
-              {/* Profile Header */}
+          {/* Profile Header */}
           <div className="flex items-start space-x-4 mb-4 pb-4 border-b-2 border-gray-200">
             <div className="relative">
               <div className="w-16 h-16 rounded-full flex items-center justify-center text-white text-xl font-semibold shadow-md border-2" style={{ background: '#8200db', borderColor: '#8200db' }}>
@@ -1175,86 +1175,86 @@ const Profile = () => {
             <div className="flex justify-between items-center">
               <div>
                 <h1 className="text-xl font-semibold" style={{ color: '#8200db' }}>
-                  {canSelectEmployee && selectedEmployeeId !== user?.employee?.id 
-                    ? 'Employee Profile' 
-                    : 'My Profile'}
-                </h1>
+          {canSelectEmployee && selectedEmployeeId !== user?.employee?.id 
+            ? 'Employee Profile' 
+            : 'My Profile'}
+        </h1>
                 <p className="text-xs text-gray-500 mt-0.5">Manage your profile information</p>
               </div>
-              {canSelectEmployee && employees.length > 0 && (
-                <select
-                  value={selectedEmployeeId || ''}
-                  onChange={(e) => handleEmployeeSelect(e.target.value)}
+        {canSelectEmployee && employees.length > 0 && (
+          <select
+            value={selectedEmployeeId || ''}
+            onChange={(e) => handleEmployeeSelect(e.target.value)}
                   className="px-3 py-1.5 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
-                >
-                  <option value="">-- Select Employee --</option>
-                  {employees.map((emp) => (
-                    <option key={emp.id} value={emp.id}>
-                      {emp.employee_id} - {emp.first_name} {emp.last_name}
-                    </option>
-                  ))}
-                </select>
-              )}
+          >
+            <option value="">-- Select Employee --</option>
+            {employees.map((emp) => (
+              <option key={emp.id} value={emp.id}>
+                {emp.employee_id} - {emp.first_name} {emp.last_name}
+              </option>
+            ))}
+          </select>
+        )}
             </div>
-          </div>
+      </div>
 
           <div className="p-6">
-            {/* Profile Header */}
+        {/* Profile Header */}
             <div className="flex items-start space-x-4 mb-4 pb-4 border-b-2 border-gray-200">
-              <div className="relative">
-                {profileData?.profile_image_url ? (
-                  <img
-                    src={profileData.profile_image_url}
-                    alt="Profile"
+          <div className="relative">
+            {profileData?.profile_image_url ? (
+              <img
+                src={profileData.profile_image_url}
+                alt="Profile"
                     className="w-16 h-16 rounded-full object-cover border-2 border-gray-300"
-                  />
-                ) : (
+              />
+            ) : (
                   <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center">
                     <span className="text-gray-400 text-xl">👤</span>
-                  </div>
-                )}
-                <label className="absolute bottom-0 right-0 text-white rounded-full p-1.5 cursor-pointer transition-all shadow-md hover:shadow-lg" style={{ backgroundColor: '#8200db' }}>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageChange}
-                    className="hidden"
-                    disabled={uploadingImage}
-                  />
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                  </svg>
-                </label>
               </div>
-              
+            )}
+                <label className="absolute bottom-0 right-0 text-white rounded-full p-1.5 cursor-pointer transition-all shadow-md hover:shadow-lg" style={{ backgroundColor: '#8200db' }}>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleImageChange}
+                className="hidden"
+                disabled={uploadingImage}
+              />
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+            </label>
+          </div>
+          
               <div className="flex-1 grid grid-cols-2 gap-3">
-                <div>
+            <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">My Name</label>
-                  <input
-                    type="text"
-                    value={basicInfo.firstName}
-                    onChange={(e) => setBasicInfo({ ...basicInfo, firstName: e.target.value })}
+              <input
+                type="text"
+                value={basicInfo.firstName}
+                onChange={(e) => setBasicInfo({ ...basicInfo, firstName: e.target.value })}
                     className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
-                  />
-                </div>
-                <div>
+              />
+            </div>
+            <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Login ID</label>
-                  <input
-                    type="text"
-                    value={basicInfo.loginId}
-                    disabled
+              <input
+                type="text"
+                value={basicInfo.loginId}
+                disabled
                     className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-gray-50"
-                  />
-                </div>
-                <div>
+              />
+            </div>
+            <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
-                  <input
-                    type="email"
-                    value={basicInfo.email}
-                    onChange={(e) => setBasicInfo({ ...basicInfo, email: e.target.value })}
+              <input
+                type="email"
+                value={basicInfo.email}
+                onChange={(e) => setBasicInfo({ ...basicInfo, email: e.target.value })}
                     className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
-                  />
-                </div>
+              />
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Mobile</label>
               <input
@@ -1329,55 +1329,55 @@ const Profile = () => {
           )}
         </div>
 
-            {/* Tabs */}
+        {/* Tabs */}
             <div className="flex space-x-1 border-b-2 border-gray-200 mb-4">
-              <button
-                onClick={() => setActiveTab('resume')}
+          <button
+            onClick={() => setActiveTab('resume')}
                 className={`px-4 py-2 text-sm font-medium transition-all ${
-                  activeTab === 'resume'
+              activeTab === 'resume'
                     ? 'border-b-2 text-white'
-                    : 'text-gray-600 hover:text-gray-800'
-                }`}
+                : 'text-gray-600 hover:text-gray-800'
+            }`}
                 style={activeTab === 'resume' ? { color: '#8200db', borderColor: '#8200db', backgroundColor: '#f3e8ff' } : {}}
-              >
-                Resume
-              </button>
-              <button
-                onClick={() => setActiveTab('private')}
+          >
+            Resume
+          </button>
+          <button
+            onClick={() => setActiveTab('private')}
                 className={`px-4 py-2 text-sm font-medium transition-all ${
-                  activeTab === 'private'
+              activeTab === 'private'
                     ? 'border-b-2 text-white'
-                    : 'text-gray-600 hover:text-gray-800'
-                }`}
+                : 'text-gray-600 hover:text-gray-800'
+            }`}
                 style={activeTab === 'private' ? { color: '#8200db', borderColor: '#8200db', backgroundColor: '#f3e8ff' } : {}}
-              >
-                Private Info
-              </button>
-              {canViewSalaryInfo && (
-                <button
-                  onClick={() => setActiveTab('salary')}
+          >
+            Private Info
+          </button>
+          {canViewSalaryInfo && (
+            <button
+              onClick={() => setActiveTab('salary')}
                   className={`px-4 py-2 text-sm font-medium transition-all ${
-                    activeTab === 'salary'
+                activeTab === 'salary'
                       ? 'border-b-2 text-white'
-                      : 'text-gray-600 hover:text-gray-800'
-                  }`}
+                  : 'text-gray-600 hover:text-gray-800'
+              }`}
                   style={activeTab === 'salary' ? { color: '#8200db', borderColor: '#8200db', backgroundColor: '#f3e8ff' } : {}}
-                >
-                  Salary Info
-                </button>
-              )}
-              <button
-                onClick={() => setActiveTab('security')}
+            >
+              Salary Info
+            </button>
+          )}
+          <button
+            onClick={() => setActiveTab('security')}
                 className={`px-4 py-2 text-sm font-medium transition-all ${
-                  activeTab === 'security'
+              activeTab === 'security'
                     ? 'border-b-2 text-white'
-                    : 'text-gray-600 hover:text-gray-800'
-                }`}
+                : 'text-gray-600 hover:text-gray-800'
+            }`}
                 style={activeTab === 'security' ? { color: '#8200db', borderColor: '#8200db', backgroundColor: '#f3e8ff' } : {}}
-              >
-                Security
-              </button>
-            </div>
+          >
+            Security
+          </button>
+        </div>
 
         {/* Tab Content */}
         {activeTab === 'resume' && (

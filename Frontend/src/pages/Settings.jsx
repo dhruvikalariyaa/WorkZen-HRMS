@@ -277,26 +277,26 @@ const Settings = () => {
       <div className="max-w-7xl mx-auto px-6 py-6">
         <div className="bg-white rounded-xl shadow-lg border-2 border-gray-200 overflow-hidden">
           <div className="border-b-2 border-gray-200">
-            <div className="flex">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
+          <div className="flex">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
                   className={`px-6 py-3 font-medium text-sm transition-all relative ${
-                    activeTab === tab.id
+                  activeTab === tab.id
                       ? 'text-white'
-                      : 'text-gray-600 hover:text-gray-800'
-                  }`}
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
                   style={activeTab === tab.id ? { backgroundColor: '#8200db' } : {}}
-                >
-                  {tab.label}
+              >
+                {tab.label}
                   {activeTab === tab.id && (
                     <div className="absolute bottom-0 left-0 right-0 h-1 bg-white"></div>
                   )}
-                </button>
-              ))}
-            </div>
+              </button>
+            ))}
           </div>
+        </div>
 
           <div className="p-8">
           {activeTab === 'company' && (
@@ -304,8 +304,8 @@ const Settings = () => {
               <div className="flex items-center mb-4 pb-2 border-b-2" style={{ borderColor: '#8200db' }}>
                 <h2 className="text-lg font-semibold" style={{ color: '#8200db' }}>Company Information</h2>
               </div>
-              <form onSubmit={handleSaveCompanyInfo} className="space-y-4 max-w-2xl">
-                {/* Company Logo Upload */}
+            <form onSubmit={handleSaveCompanyInfo} className="space-y-4 max-w-2xl">
+              {/* Company Logo Upload */}
                 <div className="mb-6 pb-6 border-b-2 border-gray-200">
                   <label className="block text-xs font-medium text-gray-700 mb-2">Company Logo</label>
                 <div className="flex items-center space-x-4">
@@ -342,63 +342,63 @@ const Settings = () => {
                 </div>
               </div>
 
-                <div>
+              <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Company Name</label>
-                  <input
-                    type="text"
-                    value={companyInfo.companyName}
-                    onChange={(e) => setCompanyInfo({ ...companyInfo, companyName: e.target.value })}
+                <input
+                  type="text"
+                  value={companyInfo.companyName}
+                  onChange={(e) => setCompanyInfo({ ...companyInfo, companyName: e.target.value })}
                     className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
-                  />
-                </div>
-                <div>
+                />
+              </div>
+              <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Address</label>
-                  <textarea
-                    value={companyInfo.address}
-                    onChange={(e) => setCompanyInfo({ ...companyInfo, address: e.target.value })}
-                    rows="3"
+                <textarea
+                  value={companyInfo.address}
+                  onChange={(e) => setCompanyInfo({ ...companyInfo, address: e.target.value })}
+                  rows="3"
                     className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Phone</label>
-                    <input
-                      type="tel"
-                      value={companyInfo.phone}
-                      onChange={(e) => setCompanyInfo({ ...companyInfo, phone: e.target.value })}
+                  <input
+                    type="tel"
+                    value={companyInfo.phone}
+                    onChange={(e) => setCompanyInfo({ ...companyInfo, phone: e.target.value })}
                       className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
-                    <input
-                      type="email"
-                      value={companyInfo.email}
-                      onChange={(e) => setCompanyInfo({ ...companyInfo, email: e.target.value })}
-                      className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
-                    />
-                  </div>
+                  />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Tax ID</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
                   <input
-                    type="text"
-                    value={companyInfo.taxId}
-                    onChange={(e) => setCompanyInfo({ ...companyInfo, taxId: e.target.value })}
-                    className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
+                    type="email"
+                    value={companyInfo.email}
+                    onChange={(e) => setCompanyInfo({ ...companyInfo, email: e.target.value })}
+                      className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                   />
                 </div>
+              </div>
+              <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Tax ID</label>
+                <input
+                  type="text"
+                  value={companyInfo.taxId}
+                  onChange={(e) => setCompanyInfo({ ...companyInfo, taxId: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
+                />
+              </div>
                 <div className="flex justify-end pt-4 border-t-2 border-gray-200">
-                  <button
-                    type="submit"
+              <button
+                type="submit"
                     className="px-4 py-2 rounded-lg text-sm text-white transition-all font-medium shadow-md hover:shadow-lg"
                     style={{ backgroundColor: '#8200db' }}
-                  >
-                    Save
-                  </button>
+              >
+                Save
+              </button>
                 </div>
-              </form>
+            </form>
             </div>
           )}
 
@@ -412,58 +412,58 @@ const Settings = () => {
               </p>
 
               <div className="bg-white border-2 border-gray-200 rounded-lg overflow-hidden shadow-md">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
                       <tr style={{ backgroundColor: '#8200db' }}>
                         <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Name</th>
                         <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Max Days</th>
                         <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Description</th>
                         <th className="text-center py-2 px-4 font-semibold text-white text-xs uppercase">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                    </tr>
+                  </thead>
+                  <tbody>
                       {leaveTypes.map((type, index) => (
                         <tr key={type.id} className={`border-b border-gray-100 hover:bg-gray-50 transition-all ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                           <td className="py-2 px-4 text-sm text-gray-800 font-medium">{type.name}</td>
-                          {editingLeaveType === type.id ? (
-                            <>
+                        {editingLeaveType === type.id ? (
+                          <>
                               <td className="py-2 px-4">
-                                <input
-                                  type="number"
-                                  value={editLeaveTypeData.maxDays}
-                                  onChange={(e) => setEditLeaveTypeData({ ...editLeaveTypeData, maxDays: parseInt(e.target.value) || 0 })}
-                                  min="0"
+                              <input
+                                type="number"
+                                value={editLeaveTypeData.maxDays}
+                                onChange={(e) => setEditLeaveTypeData({ ...editLeaveTypeData, maxDays: parseInt(e.target.value) || 0 })}
+                                min="0"
                                   className="w-24 px-2 py-1 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
-                                />
-                              </td>
+                              />
+                            </td>
                               <td className="py-2 px-4">
-                                <textarea
-                                  value={editLeaveTypeData.description}
-                                  onChange={(e) => setEditLeaveTypeData({ ...editLeaveTypeData, description: e.target.value })}
-                                  rows="2"
+                              <textarea
+                                value={editLeaveTypeData.description}
+                                onChange={(e) => setEditLeaveTypeData({ ...editLeaveTypeData, description: e.target.value })}
+                                rows="2"
                                   className="w-full px-2 py-1 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
-                                />
-                              </td>
+                              />
+                            </td>
                               <td className="py-2 px-4 text-center">
                                 <div className="flex space-x-2 justify-center">
-                                  <button
-                                    onClick={(e) => handleSaveEditLeaveType(e, type.id)}
+                                <button
+                                  onClick={(e) => handleSaveEditLeaveType(e, type.id)}
                                     className="px-3 py-1 bg-green-600 text-white rounded text-xs font-medium shadow-sm hover:shadow-md transition-all"
-                                  >
-                                    Save
-                                  </button>
-                                  <button
-                                    onClick={handleCancelEdit}
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  onClick={handleCancelEdit}
                                     className="px-3 py-1 bg-gray-600 text-white rounded text-xs font-medium shadow-sm hover:shadow-md transition-all"
-                                  >
-                                    Cancel
-                                  </button>
-                                </div>
-                              </td>
-                            </>
-                          ) : (
-                            <>
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </td>
+                          </>
+                        ) : (
+                          <>
                               <td className="py-2 px-4 text-sm text-gray-800">{type.max_days}</td>
                               <td className="py-2 px-4 text-sm text-gray-800">{type.description || '-'}</td>
                               <td className="py-2 px-4 text-center">
@@ -474,13 +474,13 @@ const Settings = () => {
                                 >
                                   Edit
                                 </button>
-                              </td>
-                            </>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
                 </div>
               </div>
             </div>
@@ -491,47 +491,47 @@ const Settings = () => {
               <div className="flex items-center mb-4 pb-2 border-b-2" style={{ borderColor: '#8200db' }}>
                 <h2 className="text-lg font-semibold" style={{ color: '#8200db' }}>Payroll Settings</h2>
               </div>
-              <form onSubmit={handleSavePayrollSettings} className="space-y-4 max-w-2xl">
-                <div>
+            <form onSubmit={handleSavePayrollSettings} className="space-y-4 max-w-2xl">
+              <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">PF Percentage (%)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={payrollSettings.pfPercentage}
-                    onChange={(e) => setPayrollSettings({ ...payrollSettings, pfPercentage: parseFloat(e.target.value) })}
+                <input
+                  type="number"
+                  step="0.01"
+                  value={payrollSettings.pfPercentage}
+                  onChange={(e) => setPayrollSettings({ ...payrollSettings, pfPercentage: parseFloat(e.target.value) })}
                     className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
-                  />
-                </div>
-                <div>
+                />
+              </div>
+              <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Professional Tax Amount (₹)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={payrollSettings.professionalTaxAmount}
-                    onChange={(e) => setPayrollSettings({ ...payrollSettings, professionalTaxAmount: parseFloat(e.target.value) })}
+                <input
+                  type="number"
+                  step="0.01"
+                  value={payrollSettings.professionalTaxAmount}
+                  onChange={(e) => setPayrollSettings({ ...payrollSettings, professionalTaxAmount: parseFloat(e.target.value) })}
                     className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
-                  />
-                </div>
-                <div>
+                />
+              </div>
+              <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">HRA Percentage (%)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={payrollSettings.hraPercentage}
-                    onChange={(e) => setPayrollSettings({ ...payrollSettings, hraPercentage: parseFloat(e.target.value) })}
+                <input
+                  type="number"
+                  step="0.01"
+                  value={payrollSettings.hraPercentage}
+                  onChange={(e) => setPayrollSettings({ ...payrollSettings, hraPercentage: parseFloat(e.target.value) })}
                     className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
-                  />
-                </div>
+                />
+              </div>
                 <div className="flex justify-end pt-4 border-t-2 border-gray-200">
-                  <button
-                    type="submit"
+              <button
+                type="submit"
                     className="px-4 py-2 rounded-lg text-sm text-white transition-all font-medium shadow-md hover:shadow-lg"
                     style={{ backgroundColor: '#8200db' }}
-                  >
-                    Save
-                  </button>
+              >
+                Save
+              </button>
                 </div>
-              </form>
+            </form>
             </div>
           )}
 
@@ -548,57 +548,57 @@ const Settings = () => {
                 </div>
               ) : (
                 <div className="bg-white border-2 border-gray-200 rounded-lg overflow-hidden shadow-md">
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
                         <tr style={{ backgroundColor: '#8200db' }}>
                           <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">User Name</th>
                           <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Login ID</th>
                           <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Email</th>
                           <th className="text-center py-2 px-4 font-semibold text-white text-xs uppercase">Role</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {users.length === 0 ? (
-                          <tr>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users.length === 0 ? (
+                        <tr>
                             <td colSpan="4" className="text-center py-8 text-gray-500 text-sm">
-                              No users found
-                            </td>
-                          </tr>
-                        ) : (
+                            No users found
+                          </td>
+                        </tr>
+                      ) : (
                           users.map((user, index) => (
                             <tr key={user.id} className={`border-b border-gray-100 hover:bg-gray-50 transition-all ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                               <td className="py-2 px-4 text-sm text-gray-800">
-                                {user.first_name && user.last_name
-                                  ? `${user.first_name} ${user.last_name}`
-                                  : user.email || 'N/A'}
-                              </td>
+                              {user.first_name && user.last_name
+                                ? `${user.first_name} ${user.last_name}`
+                                : user.email || 'N/A'}
+                            </td>
                               <td className="py-2 px-4 text-sm text-gray-800">{user.login_id || '-'}</td>
                               <td className="py-2 px-4 text-sm text-gray-800">{user.email || '-'}</td>
                               <td className="py-2 px-4 text-center">
                                 <div className="flex items-center justify-center gap-2">
-                                  <select
-                                    value={user.role}
-                                    onChange={(e) => handleRoleChange(user.id, e.target.value)}
-                                    disabled={updatingRoles[user.id]}
+                              <select
+                                value={user.role}
+                                onChange={(e) => handleRoleChange(user.id, e.target.value)}
+                                disabled={updatingRoles[user.id]}
                                     className="px-3 py-1 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all disabled:opacity-50"
-                                  >
-                                    <option value="Employee">Employee</option>
-                                    <option value="HR Officer">HR Officer</option>
-                                    <option value="Payroll Officer">Payroll Officer</option>
-                                    <option value="Manager">Manager</option>
-                                    <option value="Admin">Admin</option>
-                                  </select>
-                                  {updatingRoles[user.id] && (
+                              >
+                                <option value="Employee">Employee</option>
+                                <option value="HR Officer">HR Officer</option>
+                                <option value="Payroll Officer">Payroll Officer</option>
+                                <option value="Manager">Manager</option>
+                                <option value="Admin">Admin</option>
+                              </select>
+                              {updatingRoles[user.id] && (
                                     <div className="inline-block animate-spin rounded-full h-4 w-4 border-t-2 border-b-2" style={{ borderColor: '#8200db' }}></div>
-                                  )}
+                              )}
                                 </div>
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
                   </div>
                 </div>
               )}
