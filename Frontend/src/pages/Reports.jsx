@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { toast } from 'react-toastify';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
@@ -8,8 +8,6 @@ const Reports = () => {
   const [reportType, setReportType] = useState('');
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [employees, setEmployees] = useState([]);
-  const [salaryStatementData, setSalaryStatementData] = useState(null);
   const [filters, setFilters] = useState({
     startDate: '',
     endDate: '',
@@ -27,7 +25,6 @@ const Reports = () => {
     { id: 'attendance', name: 'Attendance Report' },
     { id: 'leave', name: 'Leave Report' },
     { id: 'salary', name: 'Salary Report' },
-    { id: 'salary-statement', name: 'Salary Statement Report' },
     { id: 'employee', name: 'Employee Report' }
   ];
 
@@ -39,32 +36,10 @@ const Reports = () => {
 
   const reportTypes = isEmployee ? employeeReportTypes : adminReportTypes;
 
-  useEffect(() => {
-    if (isAdminOrPayroll && reportType === 'salary-statement') {
-      fetchEmployees();
-    }
-  }, [reportType, isAdminOrPayroll]);
-
-  const fetchEmployees = async () => {
-    try {
-      const response = await api.get('/employees');
-      setEmployees(response.data);
-    } catch (error) {
-      console.error('Failed to fetch employees:', error);
-    }
-  };
-
   const handleGenerateReport = async () => {
     if (!reportType) {
       toast.warning('Please select a report type');
       return;
-    }
-
-    if (reportType === 'salary-statement') {
-      if (!filters.employeeId || !filters.year) {
-        toast.warning('Please select an employee and year');
-        return;
-      }
     }
 
     setLoading(true);
@@ -84,9 +59,6 @@ const Reports = () => {
         if (filters.month) params.month = filters.month;
         if (filters.year) params.year = filters.year;
         if (!isEmployee && filters.employeeId) params.employeeId = filters.employeeId;
-      } else if (reportType === 'salary-statement') {
-        params.employeeId = filters.employeeId;
-        params.year = filters.year;
       }
 
       let endpoint = reportType === 'salary' ? 'payroll' : reportType;
@@ -94,15 +66,8 @@ const Reports = () => {
         endpoint = 'employee';
       }
       
-      if (reportType === 'salary-statement') {
-        const response = await api.get(`/reports/salary-statement`, { params });
-        setSalaryStatementData(response.data);
-        setReportData(null);
-      } else {
-        const response = await api.get(`/reports/${endpoint}`, { params });
-        setReportData(response.data);
-        setSalaryStatementData(null);
-      }
+      const response = await api.get(`/reports/${endpoint}`, { params });
+      setReportData(response.data);
     } catch (error) {
       console.error('Failed to generate report:', error);
       toast.error(error.response?.data?.error || 'Failed to generate report');
@@ -111,74 +76,56 @@ const Reports = () => {
     }
   };
 
-  const handleExportPDF = async () => {
-    if (!filters.employeeId || !filters.year) {
-      toast.warning('Please select an employee and year');
+  const handleExportExcel = async (type) => {
+    if (!reportData || reportData.length === 0) {
+      toast.warning('No data to export');
       return;
     }
 
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/reports/salary-statement/pdf?employeeId=${filters.employeeId}&year=${filters.year}`,
-        {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
+        let csvContent = '';
+        let filename = '';
+
+        if (reportType === 'attendance') {
+          // CSV header
+          csvContent = 'Employee ID,Name,Department,Present Days,Absent Days,Leave Days,Total Hours\n';
+          // CSV rows
+          reportData.forEach(row => {
+            csvContent += `${row.employee_id || ''},"${row.name || ''}","${row.department || ''}",${row.present_days || 0},${row.absent_days || 0},${row.leave_days || 0},"${row.total_hours ? parseFloat(row.total_hours).toFixed(2) + 'h' : '-'}"\n`;
+          });
+          filename = `Attendance_Report_${filters.startDate || 'all'}_${filters.endDate || 'all'}.csv`;
+        } else if (reportType === 'leave') {
+          csvContent = 'Employee ID,Name,Leave Type,Start Date,End Date,Status\n';
+          reportData.forEach(row => {
+            csvContent += `${row.employee_id || ''},"${row.name || ''}","${row.leave_type || ''}","${row.start_date || ''}","${row.end_date || ''}","${row.status || ''}"\n`;
+          });
+          filename = `Leave_Report_${filters.startDate || 'all'}_${filters.endDate || 'all'}.csv`;
+        } else if (reportType === 'salary' || reportType === 'payroll') {
+          csvContent = 'Employee ID,Name,Month,Year,Gross Salary,Net Salary,Status\n';
+          reportData.forEach(row => {
+            const monthName = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][row.month - 1] || '';
+            csvContent += `${row.employee_id || ''},"${row.name || ''}","${monthName}","${row.year || ''}",${parseFloat(row.gross_salary || 0).toFixed(2)},${parseFloat(row.net_salary || 0).toFixed(2)},"${row.status || ''}"\n`;
+          });
+          filename = `Salary_Report_${filters.month || 'all'}_${filters.year || 'all'}.csv`;
+        } else if (reportType === 'employee') {
+          csvContent = 'Employee ID,Name,Email,Department,Position,Hire Date\n';
+          reportData.forEach(row => {
+            csvContent += `${row.employee_id || ''},"${row.first_name || ''} ${row.last_name || ''}","${row.email || ''}","${row.department || ''}","${row.position || ''}","${row.hire_date || ''}"\n`;
+          });
+          filename = `Employee_Report.csv`;
         }
-      );
 
-      if (!response.ok) {
-        throw new Error('Failed to export PDF');
-      }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Salary_Statement_${filters.year}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (error) {
-      console.error('Failed to export PDF:', error);
-      toast.error('Failed to export PDF');
-    }
-  };
-
-  const handleExportExcel = async () => {
-    if (!filters.employeeId || !filters.year) {
-      toast.warning('Please select an employee and year');
-      return;
-    }
-
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/reports/salary-statement/excel?employeeId=${filters.employeeId}&year=${filters.year}`,
-        {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to export Excel');
-      }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Salary_Statement_${filters.year}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+        // Create blob and download
+        const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      toast.success('Excel file downloaded successfully');
     } catch (error) {
       console.error('Failed to export Excel:', error);
       toast.error('Failed to export Excel');
@@ -186,81 +133,59 @@ const Reports = () => {
   };
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">Reports</h1>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-6 py-6">
+        <div className="bg-white rounded-xl shadow-lg border-2 border-gray-200 overflow-hidden">
+        
 
-      <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-4">Select Report Type</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          {reportTypes.map((type) => (
-            <div
-              key={type.id}
-              onClick={() => setReportType(type.id)}
-              className={`p-4 border-2 rounded-lg cursor-pointer transition-colors ${
-                reportType === type.id
-                  ? 'border-purple-600 bg-purple-50'
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}
-            >
-              <h3 className="font-semibold text-gray-800">{type.name}</h3>
+          <div className="p-8">
+            {/* Report Type Selection */}
+            <div className="mb-6">
+              <div className="flex items-center mb-4 pb-2 border-b-2" style={{ borderColor: '#8200db' }}>
+                <h2 className="text-lg font-semibold" style={{ color: '#8200db' }}>Select Report Type</h2>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {reportTypes.map((type) => (
+                  <div
+                    key={type.id}
+                    onClick={() => setReportType(type.id)}
+                    className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                      reportType === type.id
+                        ? 'border-[#8200db] bg-purple-50 shadow-md'
+                        : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
+                    }`}
+                  >
+                    <h3 className={`font-semibold ${reportType === type.id ? 'text-[#8200db]' : 'text-gray-800'}`}>{type.name}</h3>
+                  </div>
+                ))}
+              </div>
             </div>
-          ))}
-        </div>
 
-        {reportType && (
-          <div className="border-t pt-4">
-            <h3 className="font-semibold mb-4">Filters</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {reportType === 'salary-statement' && (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Employee Name</label>
-                    <select
-                      value={filters.employeeId}
-                      onChange={(e) => setFilters({ ...filters, employeeId: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                      required
-                    >
-                      <option value="">Select Employee</option>
-                      {employees.map((emp) => (
-                        <option key={emp.id} value={emp.id}>
-                          {emp.first_name} {emp.last_name} ({emp.employee_id})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Year</label>
-                    <input
-                      type="number"
-                      value={filters.year}
-                      onChange={(e) => setFilters({ ...filters, year: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                      min="2000"
-                      max={new Date().getFullYear() + 1}
-                      required
-                    />
-                  </div>
-                </>
-              )}
+            {/* Filters Section */}
+            {reportType && (
+              <div className="mt-6 pt-6 border-t-2 border-gray-200">
+                <div className="flex items-center mb-4 pb-2 border-b-2" style={{ borderColor: '#8200db' }}>
+                  <h3 className="text-base font-semibold" style={{ color: '#8200db' }}>Filters</h3>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {(reportType === 'attendance' || reportType === 'leave') && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Start Date</label>
                     <input
                       type="date"
                       value={filters.startDate}
                       onChange={(e) => setFilters({ ...filters, startDate: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">End Date</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">End Date</label>
                     <input
                       type="date"
                       value={filters.endDate}
                       onChange={(e) => setFilters({ ...filters, endDate: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     />
                   </div>
                 </>
@@ -268,11 +193,11 @@ const Reports = () => {
               {(reportType === 'salary' || reportType === 'payroll') && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Month</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Month</label>
                     <select
                       value={filters.month}
                       onChange={(e) => setFilters({ ...filters, month: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     >
                       <option value="">All Months</option>
                       {['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'].map((month, index) => (
@@ -281,23 +206,23 @@ const Reports = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Year</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Year</label>
                     <input
                       type="number"
                       value={filters.year}
                       onChange={(e) => setFilters({ ...filters, year: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     />
                   </div>
                 </>
               )}
               {reportType === 'leave' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Status</label>
                   <select
                     value={filters.status}
                     onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                   >
                     <option value="">All Status</option>
                     <option value="Pending">Pending</option>
@@ -306,253 +231,126 @@ const Reports = () => {
                   </select>
                 </div>
               )}
-            </div>
-            <div className="flex gap-2 mt-4">
-              <button
-                onClick={handleGenerateReport}
-                disabled={loading}
-                className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50"
-              >
-                {loading ? 'Generating...' : reportType === 'salary-statement' ? 'View Report' : 'Generate Report'}
-              </button>
-              {reportType === 'salary-statement' && salaryStatementData && (
-                <>
+                </div>
+                <div className="flex gap-2 mt-6 pt-4 border-t-2 border-gray-200">
                   <button
-                    onClick={handleExportPDF}
-                    className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700"
+                    onClick={handleGenerateReport}
+                    disabled={loading}
+                    className="px-4 py-2 rounded-lg text-sm text-white transition-all font-medium shadow-md hover:shadow-lg disabled:opacity-50"
+                    style={{ backgroundColor: '#8200db' }}
                   >
-                    Export PDF
+                    {loading ? 'Generating...' : 'Generate Report'}
                   </button>
-                  <button
-                    onClick={handleExportExcel}
-                    className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700"
-                  >
-                    Export Excel
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {salaryStatementData && (
-        <div className="bg-white rounded-lg shadow-md p-8">
-          <div className="text-center mb-6">
-            <h2 className="text-2xl font-bold text-blue-600 mb-2">Salary Statement Report</h2>
-            <h3 className="text-xl font-semibold">{salaryStatementData.company.name}</h3>
-            {salaryStatementData.company.address && (
-              <p className="text-gray-600">{salaryStatementData.company.address}</p>
+                  {reportData && reportData.length > 0 && (
+                    <button
+                      onClick={() => handleExportExcel(reportType)}
+                      className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium shadow-md hover:shadow-lg transition-all"
+                    >
+                      Export Excel
+                    </button>
+                  )}
+                </div>
+              </div>
             )}
-            <hr className="my-4" />
-          </div>
-
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold mb-4">Employee Information</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <span className="font-medium">Employee Name:</span> {salaryStatementData.employee.name}
-              </div>
-              <div>
-                <span className="font-medium">Designation:</span> {salaryStatementData.employee.designation || 'N/A'}
-              </div>
-              <div>
-                <span className="font-medium">Date Of Joining:</span> {salaryStatementData.employee.dateOfJoining || 'N/A'}
-              </div>
-              <div>
-                <span className="font-medium">Salary Effective From:</span> {salaryStatementData.employee.salaryEffectiveFrom || 'N/A'}
-              </div>
-            </div>
-          </div>
-
-          <div className="mb-6">
-            <table className="w-full border-collapse border border-gray-300">
-              <thead>
-                <tr className="bg-gray-100">
-                  <th className="border border-gray-300 px-4 py-3 text-left font-semibold">Salary Components</th>
-                  <th className="border border-gray-300 px-4 py-3 text-center font-semibold">Monthly Amount</th>
-                  <th className="border border-gray-300 px-4 py-3 text-center font-semibold">Yearly Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td colSpan="3" className="border border-gray-300 px-4 py-2 font-semibold text-red-600">Earnings</td>
-                </tr>
-                {salaryStatementData.monthly.basic_salary > 0 && (
-                  <tr>
-                    <td className="border border-gray-300 px-4 py-2">Basic</td>
-                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.monthly.basic_salary.toFixed(2)}</td>
-                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.yearly.basic_salary.toFixed(2)}</td>
-                  </tr>
-                )}
-                {salaryStatementData.monthly.hra > 0 && (
-                  <tr>
-                    <td className="border border-gray-300 px-4 py-2">HRA</td>
-                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.monthly.hra.toFixed(2)}</td>
-                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.yearly.hra.toFixed(2)}</td>
-                  </tr>
-                )}
-                {salaryStatementData.monthly.conveyance > 0 && (
-                  <tr>
-                    <td className="border border-gray-300 px-4 py-2">Conveyance</td>
-                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.monthly.conveyance.toFixed(2)}</td>
-                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.yearly.conveyance.toFixed(2)}</td>
-                  </tr>
-                )}
-                {salaryStatementData.monthly.medical_allowance > 0 && (
-                  <tr>
-                    <td className="border border-gray-300 px-4 py-2">Medical Allowance</td>
-                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.monthly.medical_allowance.toFixed(2)}</td>
-                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.yearly.medical_allowance.toFixed(2)}</td>
-                  </tr>
-                )}
-                {salaryStatementData.monthly.other_allowances > 0 && (
-                  <tr>
-                    <td className="border border-gray-300 px-4 py-2">Other Allowances</td>
-                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.monthly.other_allowances.toFixed(2)}</td>
-                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.yearly.other_allowances.toFixed(2)}</td>
-                  </tr>
-                )}
-                <tr>
-                  <td colSpan="3" className="border border-gray-300 px-4 py-2 font-semibold text-red-600">Deduction</td>
-                </tr>
-                {salaryStatementData.monthly.pf > 0 && (
-                  <tr>
-                    <td className="border border-gray-300 px-4 py-2">PF</td>
-                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.monthly.pf.toFixed(2)}</td>
-                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.yearly.pf.toFixed(2)}</td>
-                  </tr>
-                )}
-                {salaryStatementData.monthly.professional_tax > 0 && (
-                  <tr>
-                    <td className="border border-gray-300 px-4 py-2">Professional Tax</td>
-                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.monthly.professional_tax.toFixed(2)}</td>
-                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.yearly.professional_tax.toFixed(2)}</td>
-                  </tr>
-                )}
-                {salaryStatementData.monthly.income_tax > 0 && (
-                  <tr>
-                    <td className="border border-gray-300 px-4 py-2">Income Tax</td>
-                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.monthly.income_tax.toFixed(2)}</td>
-                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.yearly.income_tax.toFixed(2)}</td>
-                  </tr>
-                )}
-                {salaryStatementData.monthly.loan_deduction > 0 && (
-                  <tr>
-                    <td className="border border-gray-300 px-4 py-2">Loan Deduction</td>
-                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.monthly.loan_deduction.toFixed(2)}</td>
-                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.yearly.loan_deduction.toFixed(2)}</td>
-                  </tr>
-                )}
-                {salaryStatementData.monthly.other_deductions > 0 && (
-                  <tr>
-                    <td className="border border-gray-300 px-4 py-2">Other Deductions</td>
-                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.monthly.other_deductions.toFixed(2)}</td>
-                    <td className="border border-gray-300 px-4 py-2 text-right">₹{salaryStatementData.yearly.other_deductions.toFixed(2)}</td>
-                  </tr>
-                )}
-                <tr className="bg-gray-50 font-bold">
-                  <td className="border border-gray-300 px-4 py-3">Net Salary</td>
-                  <td className="border border-gray-300 px-4 py-3 text-right">₹{salaryStatementData.monthly.net_salary.toFixed(2)}</td>
-                  <td className="border border-gray-300 px-4 py-3 text-right">₹{salaryStatementData.yearly.net_salary.toFixed(2)}</td>
-                </tr>
-              </tbody>
-            </table>
           </div>
         </div>
-      )}
+      </div>
 
+      {/* Report Data Table */}
       {reportData && (
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold">
-              {reportTypes.find(t => t.id === reportType)?.name}
-            </h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b">
+        <div className="max-w-7xl mx-auto px-6 pb-6">
+          <div className="bg-white rounded-xl shadow-lg border-2 border-gray-200 overflow-hidden">
+            <div className="p-8">
+              <div className="flex items-center mb-4 pb-2 border-b-2" style={{ borderColor: '#8200db' }}>
+                <h2 className="text-lg font-semibold" style={{ color: '#8200db' }}>
+                  {reportTypes.find(t => t.id === reportType)?.name}
+                </h2>
+              </div>
+              <div className="overflow-x-auto">
+                <div className="bg-white border-2 border-gray-200 rounded-lg overflow-hidden shadow-md">
+                  <table className="w-full">
+                    <thead>
+                      <tr style={{ backgroundColor: '#8200db' }}>
                   {reportType === 'attendance' && (
                     <>
-                      <th className="text-left py-3 px-4 font-semibold">Employee ID</th>
-                      <th className="text-left py-3 px-4 font-semibold">Name</th>
-                      <th className="text-left py-3 px-4 font-semibold">Department</th>
-                      <th className="text-left py-3 px-4 font-semibold">Present Days</th>
-                      <th className="text-left py-3 px-4 font-semibold">Absent Days</th>
-                      <th className="text-left py-3 px-4 font-semibold">Leave Days</th>
-                      <th className="text-left py-3 px-4 font-semibold">Total Hours</th>
+                      <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Employee ID</th>
+                      <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Name</th>
+                      <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Department</th>
+                      <th className="text-right py-2 px-4 font-semibold text-white text-xs uppercase">Present Days</th>
+                      <th className="text-right py-2 px-4 font-semibold text-white text-xs uppercase">Absent Days</th>
+                      <th className="text-right py-2 px-4 font-semibold text-white text-xs uppercase">Leave Days</th>
+                      <th className="text-right py-2 px-4 font-semibold text-white text-xs uppercase">Total Hours</th>
                     </>
                   )}
                   {reportType === 'leave' && (
                     <>
-                      <th className="text-left py-3 px-4 font-semibold">Employee ID</th>
-                      <th className="text-left py-3 px-4 font-semibold">Name</th>
-                      <th className="text-left py-3 px-4 font-semibold">Leave Type</th>
-                      <th className="text-left py-3 px-4 font-semibold">Start Date</th>
-                      <th className="text-left py-3 px-4 font-semibold">End Date</th>
-                      <th className="text-left py-3 px-4 font-semibold">Status</th>
+                      <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Employee ID</th>
+                      <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Name</th>
+                      <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Leave Type</th>
+                      <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Start Date</th>
+                      <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">End Date</th>
+                      <th className="text-center py-2 px-4 font-semibold text-white text-xs uppercase">Status</th>
                     </>
                   )}
                   {(reportType === 'salary' || reportType === 'payroll') && (
                     <>
-                      <th className="text-left py-3 px-4 font-semibold">Employee ID</th>
-                      <th className="text-left py-3 px-4 font-semibold">Name</th>
-                      <th className="text-left py-3 px-4 font-semibold">Month</th>
-                      <th className="text-left py-3 px-4 font-semibold">Year</th>
-                      <th className="text-left py-3 px-4 font-semibold">Gross Salary</th>
-                      <th className="text-left py-3 px-4 font-semibold">Net Salary</th>
-                      <th className="text-left py-3 px-4 font-semibold">Status</th>
+                      <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Employee ID</th>
+                      <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Name</th>
+                      <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Month</th>
+                      <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Year</th>
+                      <th className="text-right py-2 px-4 font-semibold text-white text-xs uppercase">Gross Salary</th>
+                      <th className="text-right py-2 px-4 font-semibold text-white text-xs uppercase">Net Salary</th>
+                      <th className="text-center py-2 px-4 font-semibold text-white text-xs uppercase">Status</th>
                     </>
                   )}
                   {reportType === 'employee' && (
                     <>
-                      <th className="text-left py-3 px-4 font-semibold">Employee ID</th>
-                      <th className="text-left py-3 px-4 font-semibold">Name</th>
-                      <th className="text-left py-3 px-4 font-semibold">Email</th>
-                      <th className="text-left py-3 px-4 font-semibold">Department</th>
-                      <th className="text-left py-3 px-4 font-semibold">Position</th>
-                      <th className="text-left py-3 px-4 font-semibold">Hire Date</th>
+                      <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Employee ID</th>
+                      <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Name</th>
+                      <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Email</th>
+                      <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Department</th>
+                      <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Position</th>
+                      <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Hire Date</th>
                     </>
                   )}
                 </tr>
               </thead>
               <tbody>
-                {reportData.length === 0 ? (
-                  <tr>
-                    <td colSpan="7" className="text-center py-8 text-gray-500">
-                      No data found
-                    </td>
-                  </tr>
-                ) : (
-                  reportData.map((row, index) => (
-                    <tr key={index} className="border-b hover:bg-gray-50">
+                      {reportData.length === 0 ? (
+                        <tr>
+                          <td colSpan="7" className="text-center py-8 text-gray-500 text-sm">
+                            No data found
+                          </td>
+                        </tr>
+                      ) : (
+                        reportData.map((row, index) => (
+                          <tr key={index} className={`border-b border-gray-100 hover:bg-gray-50 transition-all ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                       {reportType === 'attendance' && (
                         <>
-                          <td className="py-3 px-4">{row.employee_id}</td>
-                          <td className="py-3 px-4">{row.name}</td>
-                          <td className="py-3 px-4">{row.department || '-'}</td>
-                          <td className="py-3 px-4">{row.present_days || 0}</td>
-                          <td className="py-3 px-4">{row.absent_days || 0}</td>
-                          <td className="py-3 px-4">{row.leave_days || 0}</td>
-                          <td className="py-3 px-4">{row.total_hours ? `${parseFloat(row.total_hours).toFixed(2)}h` : '-'}</td>
+                          <td className="py-2 px-4 text-sm text-gray-800">{row.employee_id}</td>
+                          <td className="py-2 px-4 text-sm text-gray-800">{row.name}</td>
+                          <td className="py-2 px-4 text-sm text-gray-800">{row.department || '-'}</td>
+                          <td className="py-2 px-4 text-right text-sm text-gray-800">{row.present_days || 0}</td>
+                          <td className="py-2 px-4 text-right text-sm text-gray-800">{row.absent_days || 0}</td>
+                          <td className="py-2 px-4 text-right text-sm text-gray-800">{row.leave_days || 0}</td>
+                          <td className="py-2 px-4 text-right text-sm text-gray-800">{row.total_hours ? `${parseFloat(row.total_hours).toFixed(2)}h` : '-'}</td>
                         </>
                       )}
                       {reportType === 'leave' && (
                         <>
-                          <td className="py-3 px-4">{row.employee_id}</td>
-                          <td className="py-3 px-4">{row.name}</td>
-                          <td className="py-3 px-4">{row.leave_type}</td>
-                          <td className="py-3 px-4">{row.start_date}</td>
-                          <td className="py-3 px-4">{row.end_date}</td>
-                          <td className="py-3 px-4">
+                          <td className="py-2 px-4 text-sm text-gray-800">{row.employee_id}</td>
+                          <td className="py-2 px-4 text-sm text-gray-800">{row.name}</td>
+                          <td className="py-2 px-4 text-sm text-gray-800">{row.leave_type}</td>
+                          <td className="py-2 px-4 text-sm text-gray-800">{row.start_date}</td>
+                          <td className="py-2 px-4 text-sm text-gray-800">{row.end_date}</td>
+                          <td className="py-2 px-4 text-center">
                             <span
-                              className={`px-2 py-1 rounded text-sm ${
+                              className={`px-2 py-1 rounded text-xs font-medium ${
                                 row.status === 'Approved'
-                                  ? 'bg-green-100 text-green-800'
+                                  ? 'bg-green-100 text-green-800 border border-green-300'
                                   : row.status === 'Rejected'
-                                  ? 'bg-red-100 text-red-800'
-                                  : 'bg-yellow-100 text-yellow-800'
+                                  ? 'bg-red-100 text-red-800 border border-red-300'
+                                  : 'bg-yellow-100 text-yellow-800 border border-yellow-300'
                               }`}
                             >
                               {row.status}
@@ -562,18 +360,18 @@ const Reports = () => {
                       )}
                       {(reportType === 'salary' || reportType === 'payroll') && (
                         <>
-                          <td className="py-3 px-4">{row.employee_id}</td>
-                          <td className="py-3 px-4">{row.name}</td>
-                          <td className="py-3 px-4">{['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][row.month - 1]}</td>
-                          <td className="py-3 px-4">{row.year}</td>
-                          <td className="py-3 px-4">₹{parseFloat(row.gross_salary).toFixed(2)}</td>
-                          <td className="py-3 px-4">₹{parseFloat(row.net_salary).toFixed(2)}</td>
-                          <td className="py-3 px-4">
+                          <td className="py-2 px-4 text-sm text-gray-800">{row.employee_id}</td>
+                          <td className="py-2 px-4 text-sm text-gray-800">{row.name}</td>
+                          <td className="py-2 px-4 text-sm text-gray-800">{['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][row.month - 1]}</td>
+                          <td className="py-2 px-4 text-sm text-gray-800">{row.year}</td>
+                          <td className="py-2 px-4 text-right text-sm text-gray-800">₹{parseFloat(row.gross_salary).toFixed(2)}</td>
+                          <td className="py-2 px-4 text-right font-semibold text-sm" style={{ color: '#8200db' }}>₹{parseFloat(row.net_salary).toFixed(2)}</td>
+                          <td className="py-2 px-4 text-center">
                             <span
-                              className={`px-2 py-1 rounded text-sm ${
+                              className={`px-2 py-1 rounded text-xs font-medium ${
                                 row.status === 'Processed'
-                                  ? 'bg-green-100 text-green-800'
-                                  : 'bg-yellow-100 text-yellow-800'
+                                  ? 'bg-green-100 text-green-800 border border-green-300'
+                                  : 'bg-yellow-100 text-yellow-800 border border-yellow-300'
                               }`}
                             >
                               {row.status}
@@ -583,19 +381,22 @@ const Reports = () => {
                       )}
                       {reportType === 'employee' && (
                         <>
-                          <td className="py-3 px-4">{row.employee_id}</td>
-                          <td className="py-3 px-4">{row.first_name} {row.last_name}</td>
-                          <td className="py-3 px-4">{row.email}</td>
-                          <td className="py-3 px-4">{row.department || '-'}</td>
-                          <td className="py-3 px-4">{row.position || '-'}</td>
-                          <td className="py-3 px-4">{row.hire_date || '-'}</td>
+                          <td className="py-2 px-4 text-sm text-gray-800">{row.employee_id}</td>
+                          <td className="py-2 px-4 text-sm text-gray-800">{row.first_name} {row.last_name}</td>
+                          <td className="py-2 px-4 text-sm text-gray-800">{row.email}</td>
+                          <td className="py-2 px-4 text-sm text-gray-800">{row.department || '-'}</td>
+                          <td className="py-2 px-4 text-sm text-gray-800">{row.position || '-'}</td>
+                          <td className="py-2 px-4 text-sm text-gray-800">{row.hire_date || '-'}</td>
                         </>
                       )}
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

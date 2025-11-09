@@ -15,6 +15,10 @@ const Profile = () => {
   const [profileData, setProfileData] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState(null);
+  const [showDeleteSkillConfirm, setShowDeleteSkillConfirm] = useState(false);
+  const [skillToDelete, setSkillToDelete] = useState(null);
+  const [showDeleteCertificationConfirm, setShowDeleteCertificationConfirm] = useState(false);
+  const [certificationToDelete, setCertificationToDelete] = useState(null);
   
   // Form states
   const [basicInfo, setBasicInfo] = useState({
@@ -350,7 +354,7 @@ const Profile = () => {
     }
   };
 
-  const handleDeleteSkill = async (skillId) => {
+  const handleDeleteSkillClick = (skillId, skillName) => {
     if (!selectedEmployeeId) return;
     
     if (!skillId || skillId === 'undefined' || skillId === undefined) {
@@ -358,14 +362,29 @@ const Profile = () => {
       console.error('Skill ID is undefined:', skillId, 'Skill object:', resumeData.skills);
       return;
     }
+    setSkillToDelete({ id: skillId, name: skillName });
+    setShowDeleteSkillConfirm(true);
+  };
+
+  const handleDeleteSkillConfirm = async () => {
+    if (!selectedEmployeeId || !skillToDelete?.id) return;
 
     try {
-      await api.delete(`/profile/${selectedEmployeeId}/skills/${skillId}`);
+      await api.delete(`/profile/${selectedEmployeeId}/skills/${skillToDelete.id}`);
       toast.success('Skill deleted successfully');
       fetchProfileData(selectedEmployeeId);
+      setShowDeleteSkillConfirm(false);
+      setSkillToDelete(null);
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to delete skill');
+      setShowDeleteSkillConfirm(false);
+      setSkillToDelete(null);
     }
+  };
+
+  const handleDeleteSkillCancel = () => {
+    setShowDeleteSkillConfirm(false);
+    setSkillToDelete(null);
   };
 
   const handleAddCertification = async () => {
@@ -386,16 +405,31 @@ const Profile = () => {
     }
   };
 
-  const handleDeleteCertification = async (certId) => {
+  const handleDeleteCertificationClick = (certId, certName) => {
     if (!selectedEmployeeId) return;
+    setCertificationToDelete({ id: certId, name: certName });
+    setShowDeleteCertificationConfirm(true);
+  };
+
+  const handleDeleteCertificationConfirm = async () => {
+    if (!selectedEmployeeId || !certificationToDelete?.id) return;
 
     try {
-      await api.delete(`/profile/${selectedEmployeeId}/certifications/${certId}`);
+      await api.delete(`/profile/${selectedEmployeeId}/certifications/${certificationToDelete.id}`);
       toast.success('Certification deleted successfully');
       fetchProfileData(selectedEmployeeId);
+      setShowDeleteCertificationConfirm(false);
+      setCertificationToDelete(null);
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to delete certification');
+      setShowDeleteCertificationConfirm(false);
+      setCertificationToDelete(null);
     }
+  };
+
+  const handleDeleteCertificationCancel = () => {
+    setShowDeleteCertificationConfirm(false);
+    setCertificationToDelete(null);
   };
 
   const handleSalaryWageChange = (value, preserveFixedPercentage = false) => {
@@ -500,7 +534,10 @@ const Profile = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 mb-4" style={{ borderColor: '#8200db' }}></div>
+          <p className="text-gray-600 font-medium">Loading profile...</p>
+        </div>
       </div>
     );
   }
@@ -508,118 +545,130 @@ const Profile = () => {
   // If user doesn't have employee record, show My Profile with user information
   if (!selectedEmployeeId && !user?.employee?.id) {
     return (
-      <div>
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold text-gray-800">My Profile</h1>
-          {canSelectEmployee && employees.length > 0 && (
-            <select
-              onChange={(e) => {
-                if (e.target.value) {
-                  handleEmployeeSelect(e.target.value);
-                }
-              }}
-              className="px-4 py-2 border border-gray-300 rounded-lg"
-            >
-              <option value="">-- View Other Employee --</option>
-              {employees.map((emp) => (
-                <option key={emp.id} value={emp.id}>
-                  {emp.employee_id} - {emp.first_name} {emp.last_name}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-7xl mx-auto px-6 py-6">
+          <div className="bg-white rounded-xl shadow-lg border-2 border-gray-200 overflow-hidden">
+            {/* Header */}
+            <div className="p-4 border-b-2 border-gray-200">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h1 className="text-xl font-semibold" style={{ color: '#8200db' }}>My Profile</h1>
+                  <p className="text-xs text-gray-500 mt-0.5">Manage your profile information</p>
+                </div>
+                {canSelectEmployee && employees.length > 0 && (
+                  <select
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        handleEmployeeSelect(e.target.value);
+                      }
+                    }}
+                    className="px-3 py-1.5 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
+                  >
+                    <option value="">-- View Other Employee --</option>
+                    {employees.map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.employee_id} - {emp.first_name} {emp.last_name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            </div>
 
-        <div className="bg-white rounded-lg shadow-md p-6">
-          {/* Profile Header */}
-          <div className="flex items-start space-x-6 mb-6 pb-6 border-b">
+            <div className="p-6">
+              {/* Profile Header */}
+          <div className="flex items-start space-x-4 mb-4 pb-4 border-b-2 border-gray-200">
             <div className="relative">
-              <div className="w-24 h-24 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center text-white text-3xl font-semibold shadow-sm">
+              <div className="w-16 h-16 rounded-full flex items-center justify-center text-white text-xl font-semibold shadow-md border-2" style={{ background: '#8200db', borderColor: '#8200db' }}>
                 {user?.employee?.first_name?.[0] || user?.loginId?.[0] || user?.email?.[0] || 'U'}
               </div>
             </div>
             
-            <div className="flex-1 grid grid-cols-2 gap-4">
+            <div className="flex-1 grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Name</label>
                 <input
                   type="text"
                   value={user?.employee?.first_name ? `${user.employee.first_name} ${user.employee.last_name || ''}`.trim() : user?.loginId || 'N/A'}
                   disabled
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-gray-50"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Login ID</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Login ID</label>
                 <input
                   type="text"
                   value={user?.loginId || 'N/A'}
                   disabled
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-gray-50"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
                 <input
                   type="email"
                   value={user?.email || 'N/A'}
                   disabled
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-gray-50"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Role</label>
                 <input
                   type="text"
                   value={user?.role || 'N/A'}
                   disabled
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-gray-50"
                 />
               </div>
             </div>
           </div>
 
           {/* Tabs */}
-          <div className="flex space-x-4 border-b mb-6">
+          <div className="flex space-x-1 border-b-2 border-gray-200 mb-4">
             <button
               onClick={() => setActiveTab('resume')}
-              className={`px-4 py-2 font-medium ${
+              className={`px-4 py-2 text-sm font-medium transition-all ${
                 activeTab === 'resume'
-                  ? 'border-b-2 border-blue-600 text-blue-600'
+                  ? 'border-b-2 text-white'
                   : 'text-gray-600 hover:text-gray-800'
               }`}
+              style={activeTab === 'resume' ? { color: '#8200db', borderColor: '#8200db', backgroundColor: '#f3e8ff' } : {}}
             >
               Resume
             </button>
             <button
               onClick={() => setActiveTab('private')}
-              className={`px-4 py-2 font-medium ${
+              className={`px-4 py-2 text-sm font-medium transition-all ${
                 activeTab === 'private'
-                  ? 'border-b-2 border-blue-600 text-blue-600'
+                  ? 'border-b-2 text-white'
                   : 'text-gray-600 hover:text-gray-800'
               }`}
+              style={activeTab === 'private' ? { color: '#8200db', borderColor: '#8200db', backgroundColor: '#f3e8ff' } : {}}
             >
               Private Info
             </button>
             {canViewSalaryInfo && (
               <button
                 onClick={() => setActiveTab('salary')}
-                className={`px-4 py-2 font-medium ${
+                className={`px-4 py-2 text-sm font-medium transition-all ${
                   activeTab === 'salary'
-                    ? 'border-b-2 border-blue-600 text-blue-600'
+                    ? 'border-b-2 text-white'
                     : 'text-gray-600 hover:text-gray-800'
                 }`}
+                style={activeTab === 'salary' ? { color: '#8200db', borderColor: '#8200db', backgroundColor: '#f3e8ff' } : {}}
               >
                 Salary Info
               </button>
             )}
             <button
               onClick={() => setActiveTab('security')}
-              className={`px-4 py-2 font-medium ${
+              className={`px-4 py-2 text-sm font-medium transition-all ${
                 activeTab === 'security'
-                  ? 'border-b-2 border-blue-600 text-blue-600'
+                  ? 'border-b-2 text-white'
                   : 'text-gray-600 hover:text-gray-800'
               }`}
+              style={activeTab === 'security' ? { color: '#8200db', borderColor: '#8200db', backgroundColor: '#f3e8ff' } : {}}
             >
               Security
             </button>
@@ -630,34 +679,34 @@ const Profile = () => {
             <div className="grid grid-cols-2 gap-6">
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">About</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">About</label>
                   <textarea
                     value={resumeData.about}
                     onChange={(e) => setResumeData({ ...resumeData, about: e.target.value })}
                     rows={4}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     placeholder="Tell us about yourself..."
                     disabled={!user?.employee?.id}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">What I love about my job</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">What I love about my job</label>
                   <textarea
                     value={resumeData.jobLove}
                     onChange={(e) => setResumeData({ ...resumeData, jobLove: e.target.value })}
                     rows={4}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     placeholder="What do you love about your job?"
                     disabled={!user?.employee?.id}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">My Interests and hobbies</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">My Interests and hobbies</label>
                   <textarea
                     value={resumeData.interests}
                     onChange={(e) => setResumeData({ ...resumeData, interests: e.target.value })}
                     rows={4}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     placeholder="Your interests and hobbies..."
                     disabled={!user?.employee?.id}
                   />
@@ -666,7 +715,8 @@ const Profile = () => {
                   <button
                     onClick={handleSaveResume}
                     disabled={saving}
-                    className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                    className="text-white px-4 py-2 rounded-lg font-medium transition-all shadow-md hover:shadow-lg disabled:opacity-50"
+                    style={{ backgroundColor: '#8200db' }}
                   >
                     {saving ? 'Saving...' : 'Save'}
                   </button>
@@ -685,7 +735,7 @@ const Profile = () => {
               </div>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Skills</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Skills</label>
                   <div className="flex space-x-2 mb-2">
                     <input
                       type="text"
@@ -693,12 +743,12 @@ const Profile = () => {
                       onChange={(e) => setNewSkill(e.target.value)}
                       onKeyPress={(e) => e.key === 'Enter' && user?.employee?.id && handleAddSkill()}
                       placeholder="Add skill"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg"
+                      className="flex-1 px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                       disabled={!user?.employee?.id}
                     />
                     <button
                       onClick={handleAddSkill}
-                      className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                      className="text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-all shadow-md hover:shadow-lg disabled:opacity-50"
                       disabled={!user?.employee?.id}
                     >
                       Add
@@ -712,7 +762,7 @@ const Profile = () => {
                           <button
                             onClick={() => {
                               if (skill.id) {
-                                handleDeleteSkill(skill.id);
+                                handleDeleteSkillClick(skill.id, skill.skill_name || skill);
                               } else {
                                 console.error('Skill ID missing:', skill);
                                 toast.error('Skill ID is missing. Please refresh the page.');
@@ -731,14 +781,14 @@ const Profile = () => {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Certification</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Certification</label>
                   <div className="space-y-2 mb-2">
                     <input
                       type="text"
                       value={newCertification.certificationName}
                       onChange={(e) => setNewCertification({ ...newCertification, certificationName: e.target.value })}
                       placeholder="Certification Name"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                       disabled={!user?.employee?.id}
                     />
                     <input
@@ -746,7 +796,7 @@ const Profile = () => {
                       value={newCertification.issuingOrganization}
                       onChange={(e) => setNewCertification({ ...newCertification, issuingOrganization: e.target.value })}
                       placeholder="Issuing Organization"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                       disabled={!user?.employee?.id}
                     />
                     <div className="grid grid-cols-2 gap-2">
@@ -755,7 +805,7 @@ const Profile = () => {
                         value={newCertification.issueDate}
                         onChange={(e) => setNewCertification({ ...newCertification, issueDate: e.target.value })}
                         placeholder="Issue Date"
-                        className="px-3 py-2 border border-gray-300 rounded-lg"
+                        className="px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                         disabled={!user?.employee?.id}
                       />
                       <input
@@ -763,14 +813,14 @@ const Profile = () => {
                         value={newCertification.expiryDate}
                         onChange={(e) => setNewCertification({ ...newCertification, expiryDate: e.target.value })}
                         placeholder="Expiry Date"
-                        className="px-3 py-2 border border-gray-300 rounded-lg"
+                        className="px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                         disabled={!user?.employee?.id}
                       />
                     </div>
                     {user?.employee?.id && (
                       <button
                         onClick={handleAddCertification}
-                        className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                        className="w-full text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-all shadow-md hover:shadow-lg"
                       >
                         Add Certification
                       </button>
@@ -787,7 +837,7 @@ const Profile = () => {
                         </div>
                         {user?.employee?.id && (
                           <button
-                            onClick={() => handleDeleteCertification(cert.id)}
+                            onClick={() => handleDeleteCertificationClick(cert.id, cert.certification_name)}
                             className="text-red-600 hover:text-red-800"
                           >
                             ✕
@@ -808,41 +858,41 @@ const Profile = () => {
             <div className="grid grid-cols-2 gap-6">
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Date of Birth</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Date of Birth</label>
                   <input
                     type="date"
                     value={privateInfo.dateOfBirth}
                     onChange={(e) => setPrivateInfo({ ...privateInfo, dateOfBirth: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     disabled={!user?.employee?.id}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Residing Address</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Residing Address</label>
                   <textarea
                     value={privateInfo.mailingAddress}
                     onChange={(e) => setPrivateInfo({ ...privateInfo, mailingAddress: e.target.value })}
                     rows={3}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     disabled={!user?.employee?.id}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Nationality</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Nationality</label>
                   <input
                     type="text"
                     value={privateInfo.nationality}
                     onChange={(e) => setPrivateInfo({ ...privateInfo, nationality: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     disabled={!user?.employee?.id}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Marital Status</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Marital Status</label>
                   <select
                     value={privateInfo.maritalStatus}
                     onChange={(e) => setPrivateInfo({ ...privateInfo, maritalStatus: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     disabled={!user?.employee?.id}
                   >
                     <option value="">Select</option>
@@ -853,11 +903,11 @@ const Profile = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Gender</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Gender</label>
                   <select
                     value={privateInfo.gender}
                     onChange={(e) => setPrivateInfo({ ...privateInfo, gender: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     disabled={!user?.employee?.id}
                   >
                     <option value="">Select</option>
@@ -867,19 +917,20 @@ const Profile = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Date of Joining</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Date of Joining</label>
                   <input
                     type="date"
                     value={privateInfo.dateOfJoining}
                     disabled
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                    className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-gray-50"
                   />
                 </div>
                 {user?.employee?.id && (
                   <button
                     onClick={handleSavePrivateInfo}
                     disabled={saving}
-                    className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                    className="text-white px-4 py-2 rounded-lg font-medium transition-all shadow-md hover:shadow-lg disabled:opacity-50"
+                    style={{ backgroundColor: '#8200db' }}
                   >
                     {saving ? 'Saving...' : 'Save'}
                   </button>
@@ -899,62 +950,62 @@ const Profile = () => {
               <div className="space-y-4">
                 <h3 className="font-semibold text-gray-800 mb-2">Bank Details</h3>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Account Number</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Account Number</label>
                   <input
                     type="text"
                     value={privateInfo.bankAccountNumber}
                     onChange={(e) => setPrivateInfo({ ...privateInfo, bankAccountNumber: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     disabled={!user?.employee?.id}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Bank Name</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Bank Name</label>
                   <input
                     type="text"
                     value={privateInfo.bankName}
                     onChange={(e) => setPrivateInfo({ ...privateInfo, bankName: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     disabled={!user?.employee?.id}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">IFSC Code</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">IFSC Code</label>
                   <input
                     type="text"
                     value={privateInfo.ifscCode}
                     onChange={(e) => setPrivateInfo({ ...privateInfo, ifscCode: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     disabled={!user?.employee?.id}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">PAN No.</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">PAN No.</label>
                   <input
                     type="text"
                     value={privateInfo.panNumber}
                     onChange={(e) => setPrivateInfo({ ...privateInfo, panNumber: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     disabled={!user?.employee?.id}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">UAN No.</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">UAN No.</label>
                   <input
                     type="text"
                     value={privateInfo.uanNumber}
                     onChange={(e) => setPrivateInfo({ ...privateInfo, uanNumber: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     disabled={!user?.employee?.id}
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">BIC Code</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">BIC Code</label>
                   <input
                     type="text"
                     value={privateInfo.bicCode}
                     onChange={(e) => setPrivateInfo({ ...privateInfo, bicCode: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     disabled={!user?.employee?.id}
                   />
                 </div>
@@ -991,7 +1042,7 @@ const Profile = () => {
                   type="text"
                   value={user?.loginId || 'N/A'}
                   disabled
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-gray-50"
                 />
               </div>
               <div>
@@ -1000,7 +1051,7 @@ const Profile = () => {
                   type="email"
                   value={user?.email || 'N/A'}
                   disabled
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-gray-50"
                 />
               </div>
               <div>
@@ -1009,7 +1060,7 @@ const Profile = () => {
                   type="text"
                   value={user?.role || 'N/A'}
                   disabled
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-gray-50"
                 />
               </div>
               {!user?.employee?.id && (
@@ -1028,100 +1079,189 @@ const Profile = () => {
               </p>
             </div>
           )}
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
-
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">
-          {canSelectEmployee && selectedEmployeeId !== user?.employee?.id 
-            ? 'Employee Profile' 
-            : 'My Profile'}
-        </h1>
-        {canSelectEmployee && employees.length > 0 && (
-          <select
-            value={selectedEmployeeId || ''}
-            onChange={(e) => handleEmployeeSelect(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg"
-          >
-            <option value="">-- Select Employee --</option>
-            {employees.map((emp) => (
-              <option key={emp.id} value={emp.id}>
-                {emp.employee_id} - {emp.first_name} {emp.last_name}
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
-
-      <div className="bg-white rounded-lg shadow-md p-6">
-        {/* Profile Header */}
-        <div className="flex items-start space-x-6 mb-6 pb-6 border-b">
-          <div className="relative">
-            {profileData?.profile_image_url ? (
-              <img
-                src={profileData.profile_image_url}
-                alt="Profile"
-                className="w-24 h-24 rounded-full object-cover border-2 border-gray-300"
-              />
-            ) : (
-              <div className="w-24 h-24 rounded-full bg-gray-200 flex items-center justify-center">
-                <span className="text-gray-400 text-2xl">👤</span>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-6 py-6">
+        <div className="bg-white rounded-xl shadow-lg border-2 border-gray-200 overflow-hidden">
+      {/* Delete Skill Confirmation Modal */}
+      {showDeleteSkillConfirm && skillToDelete && (
+        <div className="fixed inset-0 bg-gray-40 bg-opacity-10 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-2xl">
+            <div className="flex items-center mb-4">
+              <div className="flex-shrink-0 w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mr-4">
+                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
               </div>
-            )}
-            <label className="absolute bottom-0 right-0 bg-blue-600 text-white rounded-full p-2 cursor-pointer hover:bg-blue-700">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageChange}
-                className="hidden"
-                disabled={uploadingImage}
-              />
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-              </svg>
-            </label>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900">Delete Skill</h3>
+                <p className="text-sm text-gray-500 mt-1">This action cannot be undone</p>
+              </div>
+            </div>
+            
+            <div className="mb-6">
+              <p className="text-gray-700">
+                Are you sure you want to delete the skill <span className="font-semibold">{skillToDelete.name}</span>?
+              </p>
+            </div>
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={handleDeleteSkillCancel}
+                className="px-3 py-1.5 text-sm border-2 border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteSkillConfirm}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                Delete
+              </button>
+            </div>
           </div>
-          
-          <div className="flex-1 grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">My Name</label>
-              <input
-                type="text"
-                value={basicInfo.firstName}
-                onChange={(e) => setBasicInfo({ ...basicInfo, firstName: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              />
+        </div>
+      )}
+
+      {/* Delete Certification Confirmation Modal */}
+      {showDeleteCertificationConfirm && certificationToDelete && (
+        <div className="fixed inset-0 bg-gray-40 bg-opacity-10 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-2xl">
+            <div className="flex items-center mb-4">
+              <div className="flex-shrink-0 w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mr-4">
+                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900">Delete Certification</h3>
+                <p className="text-sm text-gray-500 mt-1">This action cannot be undone</p>
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Login ID</label>
-              <input
-                type="text"
-                value={basicInfo.loginId}
-                disabled
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
-              />
+            
+            <div className="mb-6">
+              <p className="text-gray-700">
+                Are you sure you want to delete the certification <span className="font-semibold">{certificationToDelete.name}</span>?
+              </p>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-              <input
-                type="email"
-                value={basicInfo.email}
-                onChange={(e) => setBasicInfo({ ...basicInfo, email: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-              />
+
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={handleDeleteCertificationCancel}
+                className="px-3 py-1.5 text-sm border-2 border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteCertificationConfirm}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                Delete
+              </button>
             </div>
+          </div>
+        </div>
+      )}
+
+          {/* Header */}
+          <div className="p-4 border-b-2 border-gray-200">
+            <div className="flex justify-between items-center">
+              <div>
+                <h1 className="text-xl font-semibold" style={{ color: '#8200db' }}>
+                  {canSelectEmployee && selectedEmployeeId !== user?.employee?.id 
+                    ? 'Employee Profile' 
+                    : 'My Profile'}
+                </h1>
+                <p className="text-xs text-gray-500 mt-0.5">Manage your profile information</p>
+              </div>
+              {canSelectEmployee && employees.length > 0 && (
+                <select
+                  value={selectedEmployeeId || ''}
+                  onChange={(e) => handleEmployeeSelect(e.target.value)}
+                  className="px-3 py-1.5 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
+                >
+                  <option value="">-- Select Employee --</option>
+                  {employees.map((emp) => (
+                    <option key={emp.id} value={emp.id}>
+                      {emp.employee_id} - {emp.first_name} {emp.last_name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          </div>
+
+          <div className="p-6">
+            {/* Profile Header */}
+            <div className="flex items-start space-x-4 mb-4 pb-4 border-b-2 border-gray-200">
+              <div className="relative">
+                {profileData?.profile_image_url ? (
+                  <img
+                    src={profileData.profile_image_url}
+                    alt="Profile"
+                    className="w-16 h-16 rounded-full object-cover border-2 border-gray-300"
+                  />
+                ) : (
+                  <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center">
+                    <span className="text-gray-400 text-xl">👤</span>
+                  </div>
+                )}
+                <label className="absolute bottom-0 right-0 text-white rounded-full p-1.5 cursor-pointer transition-all shadow-md hover:shadow-lg" style={{ backgroundColor: '#8200db' }}>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    className="hidden"
+                    disabled={uploadingImage}
+                  />
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                </label>
+              </div>
+              
+              <div className="flex-1 grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">My Name</label>
+                  <input
+                    type="text"
+                    value={basicInfo.firstName}
+                    onChange={(e) => setBasicInfo({ ...basicInfo, firstName: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Login ID</label>
+                  <input
+                    type="text"
+                    value={basicInfo.loginId}
+                    disabled
+                    className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-gray-50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
+                  <input
+                    type="email"
+                    value={basicInfo.email}
+                    onChange={(e) => setBasicInfo({ ...basicInfo, email: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
+                  />
+                </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Mobile</label>
               <input
                 type="tel"
                 value={basicInfo.phoneNumber}
                 onChange={(e) => setBasicInfo({ ...basicInfo, phoneNumber: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
               />
             </div>
             <div>
@@ -1130,7 +1270,7 @@ const Profile = () => {
                 type="text"
                 value={basicInfo.company}
                 disabled
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-gray-50"
               />
             </div>
             <div>
@@ -1139,7 +1279,7 @@ const Profile = () => {
                 type="text"
                 value={basicInfo.department}
                 disabled
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-gray-50"
               />
             </div>
             <div>
@@ -1148,7 +1288,7 @@ const Profile = () => {
                 <select
                   value={basicInfo.managerId || ''}
                   onChange={(e) => setBasicInfo({ ...basicInfo, managerId: e.target.value || '' })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                 >
                   <option value="">Select Manager</option>
                   {employees
@@ -1168,7 +1308,7 @@ const Profile = () => {
                       : 'No Manager'
                   }
                   disabled
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-gray-50"
                 />
               )}
             </div>
@@ -1180,7 +1320,8 @@ const Profile = () => {
               <button
                 onClick={handleSaveBasicInfo}
                 disabled={saving}
-                className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                className="text-white px-4 py-2 rounded-lg font-medium transition-all shadow-md hover:shadow-lg disabled:opacity-50"
+                style={{ backgroundColor: '#8200db' }}
               >
                 {saving ? 'Saving...' : 'Save Basic Info'}
               </button>
@@ -1188,51 +1329,55 @@ const Profile = () => {
           )}
         </div>
 
-        {/* Tabs */}
-        <div className="flex space-x-4 border-b mb-6">
-          <button
-            onClick={() => setActiveTab('resume')}
-            className={`px-4 py-2 font-medium ${
-              activeTab === 'resume'
-                ? 'border-b-2 border-blue-600 text-blue-600'
-                : 'text-gray-600 hover:text-gray-800'
-            }`}
-          >
-            Resume
-          </button>
-          <button
-            onClick={() => setActiveTab('private')}
-            className={`px-4 py-2 font-medium ${
-              activeTab === 'private'
-                ? 'border-b-2 border-blue-600 text-blue-600'
-                : 'text-gray-600 hover:text-gray-800'
-            }`}
-          >
-            Private Info
-          </button>
-          {canViewSalaryInfo && (
-            <button
-              onClick={() => setActiveTab('salary')}
-              className={`px-4 py-2 font-medium ${
-                activeTab === 'salary'
-                  ? 'border-b-2 border-blue-600 text-blue-600'
-                  : 'text-gray-600 hover:text-gray-800'
-              }`}
-            >
-              Salary Info
-            </button>
-          )}
-          <button
-            onClick={() => setActiveTab('security')}
-            className={`px-4 py-2 font-medium ${
-              activeTab === 'security'
-                ? 'border-b-2 border-blue-600 text-blue-600'
-                : 'text-gray-600 hover:text-gray-800'
-            }`}
-          >
-            Security
-          </button>
-        </div>
+            {/* Tabs */}
+            <div className="flex space-x-1 border-b-2 border-gray-200 mb-4">
+              <button
+                onClick={() => setActiveTab('resume')}
+                className={`px-4 py-2 text-sm font-medium transition-all ${
+                  activeTab === 'resume'
+                    ? 'border-b-2 text-white'
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+                style={activeTab === 'resume' ? { color: '#8200db', borderColor: '#8200db', backgroundColor: '#f3e8ff' } : {}}
+              >
+                Resume
+              </button>
+              <button
+                onClick={() => setActiveTab('private')}
+                className={`px-4 py-2 text-sm font-medium transition-all ${
+                  activeTab === 'private'
+                    ? 'border-b-2 text-white'
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+                style={activeTab === 'private' ? { color: '#8200db', borderColor: '#8200db', backgroundColor: '#f3e8ff' } : {}}
+              >
+                Private Info
+              </button>
+              {canViewSalaryInfo && (
+                <button
+                  onClick={() => setActiveTab('salary')}
+                  className={`px-4 py-2 text-sm font-medium transition-all ${
+                    activeTab === 'salary'
+                      ? 'border-b-2 text-white'
+                      : 'text-gray-600 hover:text-gray-800'
+                  }`}
+                  style={activeTab === 'salary' ? { color: '#8200db', borderColor: '#8200db', backgroundColor: '#f3e8ff' } : {}}
+                >
+                  Salary Info
+                </button>
+              )}
+              <button
+                onClick={() => setActiveTab('security')}
+                className={`px-4 py-2 text-sm font-medium transition-all ${
+                  activeTab === 'security'
+                    ? 'border-b-2 text-white'
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+                style={activeTab === 'security' ? { color: '#8200db', borderColor: '#8200db', backgroundColor: '#f3e8ff' } : {}}
+              >
+                Security
+              </button>
+            </div>
 
         {/* Tab Content */}
         {activeTab === 'resume' && (
@@ -1244,7 +1389,7 @@ const Profile = () => {
                   value={resumeData.about}
                   onChange={(e) => setResumeData({ ...resumeData, about: e.target.value })}
                   rows={4}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                   placeholder="Tell us about yourself..."
                 />
               </div>
@@ -1254,7 +1399,7 @@ const Profile = () => {
                   value={resumeData.jobLove}
                   onChange={(e) => setResumeData({ ...resumeData, jobLove: e.target.value })}
                   rows={4}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                   placeholder="What do you love about your job?"
                 />
               </div>
@@ -1264,14 +1409,15 @@ const Profile = () => {
                   value={resumeData.interests}
                   onChange={(e) => setResumeData({ ...resumeData, interests: e.target.value })}
                   rows={4}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                   placeholder="Your interests and hobbies..."
                 />
               </div>
               <button
                 onClick={handleSaveResume}
                 disabled={saving}
-                className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                className="text-white px-4 py-2 rounded-lg font-medium transition-all shadow-md hover:shadow-lg disabled:opacity-50"
+                style={{ backgroundColor: '#8200db' }}
               >
                 {saving ? 'Saving...' : 'Save'}
               </button>
@@ -1290,7 +1436,8 @@ const Profile = () => {
                   />
                   <button
                     onClick={handleAddSkill}
-                    className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                    className="text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-all shadow-md hover:shadow-lg"
+                    style={{ backgroundColor: '#8200db' }}
                   >
                     Add
                   </button>
@@ -1302,7 +1449,7 @@ const Profile = () => {
                       <button
                         onClick={() => {
                           if (skill.id) {
-                            handleDeleteSkill(skill.id);
+                            handleDeleteSkillClick(skill.id, skill.skill_name || skill);
                           } else {
                             console.error('Skill ID missing:', skill);
                             toast.error('Skill ID is missing. Please refresh the page.');
@@ -1324,14 +1471,14 @@ const Profile = () => {
                     value={newCertification.certificationName}
                     onChange={(e) => setNewCertification({ ...newCertification, certificationName: e.target.value })}
                     placeholder="Certification Name"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                   />
                   <input
                     type="text"
                     value={newCertification.issuingOrganization}
                     onChange={(e) => setNewCertification({ ...newCertification, issuingOrganization: e.target.value })}
                     placeholder="Issuing Organization"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                   />
                   <div className="grid grid-cols-2 gap-2">
                     <input
@@ -1351,7 +1498,8 @@ const Profile = () => {
                   </div>
                   <button
                     onClick={handleAddCertification}
-                    className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                    className="w-full text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-all shadow-md hover:shadow-lg"
+                    style={{ backgroundColor: '#8200db' }}
                   >
                     Add Certification
                   </button>
@@ -1366,7 +1514,7 @@ const Profile = () => {
                         )}
                       </div>
                       <button
-                        onClick={() => handleDeleteCertification(cert.id)}
+                        onClick={() => handleDeleteCertificationClick(cert.id, cert.certification_name)}
                         className="text-red-600 hover:text-red-800"
                       >
                         ✕
@@ -1388,7 +1536,7 @@ const Profile = () => {
                   type="date"
                   value={privateInfo.dateOfBirth}
                   onChange={(e) => setPrivateInfo({ ...privateInfo, dateOfBirth: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                 />
               </div>
               <div>
@@ -1397,7 +1545,7 @@ const Profile = () => {
                   value={privateInfo.mailingAddress}
                   onChange={(e) => setPrivateInfo({ ...privateInfo, mailingAddress: e.target.value })}
                   rows={3}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                 />
               </div>
               <div>
@@ -1406,7 +1554,7 @@ const Profile = () => {
                   type="text"
                   value={privateInfo.nationality}
                   onChange={(e) => setPrivateInfo({ ...privateInfo, nationality: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                 />
               </div>
               <div>
@@ -1414,7 +1562,7 @@ const Profile = () => {
                 <select
                   value={privateInfo.maritalStatus}
                   onChange={(e) => setPrivateInfo({ ...privateInfo, maritalStatus: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                 >
                   <option value="">Select</option>
                   <option value="Single">Single</option>
@@ -1428,7 +1576,7 @@ const Profile = () => {
                 <select
                   value={privateInfo.gender}
                   onChange={(e) => setPrivateInfo({ ...privateInfo, gender: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                 >
                   <option value="">Select</option>
                   <option value="Male">Male</option>
@@ -1442,7 +1590,7 @@ const Profile = () => {
                   type="date"
                   value={privateInfo.dateOfJoining}
                   disabled
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-gray-50"
                 />
               </div>
             </div>
@@ -1454,7 +1602,7 @@ const Profile = () => {
                   type="text"
                   value={privateInfo.bankAccountNumber}
                   onChange={(e) => setPrivateInfo({ ...privateInfo, bankAccountNumber: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                 />
               </div>
               <div>
@@ -1463,7 +1611,7 @@ const Profile = () => {
                   type="text"
                   value={privateInfo.bankName}
                   onChange={(e) => setPrivateInfo({ ...privateInfo, bankName: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                 />
               </div>
               <div>
@@ -1472,7 +1620,7 @@ const Profile = () => {
                   type="text"
                   value={privateInfo.ifscCode}
                   onChange={(e) => setPrivateInfo({ ...privateInfo, ifscCode: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                 />
               </div>
               <div>
@@ -1481,7 +1629,7 @@ const Profile = () => {
                   type="text"
                   value={privateInfo.panNumber}
                   onChange={(e) => setPrivateInfo({ ...privateInfo, panNumber: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                 />
               </div>
               <div>
@@ -1490,7 +1638,7 @@ const Profile = () => {
                   type="text"
                   value={privateInfo.uanNumber}
                   onChange={(e) => setPrivateInfo({ ...privateInfo, uanNumber: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                 />
               </div>
               <div>
@@ -1499,13 +1647,14 @@ const Profile = () => {
                   type="text"
                   value={privateInfo.bicCode}
                   onChange={(e) => setPrivateInfo({ ...privateInfo, bicCode: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                 />
               </div>
               <button
                 onClick={handleSavePrivateInfo}
                 disabled={saving}
-                className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                className="text-white px-4 py-2 rounded-lg font-medium transition-all shadow-md hover:shadow-lg disabled:opacity-50"
+                style={{ backgroundColor: '#8200db' }}
               >
                 {saving ? 'Saving...' : 'Save'}
               </button>
@@ -1528,7 +1677,7 @@ const Profile = () => {
                 <select
                   value={salaryInfo.wageType}
                   onChange={(e) => setSalaryInfo({ ...salaryInfo, wageType: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                 >
                   <option value="Fixed">Fixed</option>
                 </select>
@@ -1539,7 +1688,7 @@ const Profile = () => {
                   type="number"
                   value={salaryInfo.monthlyWage}
                   onChange={(e) => handleSalaryWageChange(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                 />
               </div>
               <div>
@@ -1548,7 +1697,7 @@ const Profile = () => {
                   type="number"
                   value={salaryInfo.yearlyWage}
                   disabled
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-gray-50"
                 />
               </div>
             </div>
@@ -1558,16 +1707,16 @@ const Profile = () => {
               <div className="space-y-4">
                 <div className="grid grid-cols-4 gap-4 items-center">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Basic Salary</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Basic Salary</label>
                     <input
                       type="number"
                       value={salaryInfo.basicSalary}
                       disabled
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                      className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-gray-50"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Percentage</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Percentage</label>
                     <input
                       type="number"
                       step="0.01"
@@ -1579,7 +1728,7 @@ const Profile = () => {
                         setSalaryInfo({ ...salaryInfo, basicSalaryPercentage: percent });
                         if (salaryInfo.monthlyWage) handleSalaryWageChange(salaryInfo.monthlyWage);
                       }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     />
                   </div>
                   <div className="col-span-2">
@@ -1589,16 +1738,16 @@ const Profile = () => {
 
                 <div className="grid grid-cols-4 gap-4 items-center">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">House Rent Allowance</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">House Rent Allowance</label>
                     <input
                       type="number"
                       value={salaryInfo.hra}
                       disabled
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                      className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-gray-50"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Percentage</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Percentage</label>
                     <input
                       type="number"
                       step="0.01"
@@ -1610,7 +1759,7 @@ const Profile = () => {
                         setSalaryInfo({ ...salaryInfo, hraPercentage: percent });
                         if (salaryInfo.monthlyWage) handleSalaryWageChange(salaryInfo.monthlyWage);
                       }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     />
                   </div>
                   <div className="col-span-2">
@@ -1620,16 +1769,16 @@ const Profile = () => {
 
                 <div className="grid grid-cols-4 gap-4 items-center">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Standard Allowance</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Standard Allowance</label>
                     <input
                       type="number"
                       value={salaryInfo.standardAllowance}
                       disabled
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                      className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-gray-50"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Percentage</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Percentage</label>
                     <input
                       type="number"
                       step="0.01"
@@ -1641,7 +1790,7 @@ const Profile = () => {
                         setSalaryInfo({ ...salaryInfo, standardAllowancePercentage: percent });
                         if (salaryInfo.monthlyWage) handleSalaryWageChange(salaryInfo.monthlyWage);
                       }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     />
                   </div>
                   <div className="col-span-2">
@@ -1651,16 +1800,16 @@ const Profile = () => {
 
                 <div className="grid grid-cols-4 gap-4 items-center">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Performance Bonus</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Performance Bonus</label>
                     <input
                       type="number"
                       value={salaryInfo.performanceBonus}
                       disabled
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                      className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-gray-50"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Percentage</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Percentage</label>
                     <input
                       type="number"
                       step="0.01"
@@ -1672,7 +1821,7 @@ const Profile = () => {
                         setSalaryInfo({ ...salaryInfo, performanceBonusPercentage: percent });
                         if (salaryInfo.monthlyWage) handleSalaryWageChange(salaryInfo.monthlyWage);
                       }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     />
                   </div>
                   <div className="col-span-2">
@@ -1682,16 +1831,16 @@ const Profile = () => {
 
                 <div className="grid grid-cols-4 gap-4 items-center">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Leave Travel Allowance</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Leave Travel Allowance</label>
                     <input
                       type="number"
                       value={salaryInfo.leaveTravelAllowance}
                       disabled
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                      className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-gray-50"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Percentage</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Percentage</label>
                     <input
                       type="number"
                       step="0.01"
@@ -1703,7 +1852,7 @@ const Profile = () => {
                         setSalaryInfo({ ...salaryInfo, leaveTravelAllowancePercentage: percent });
                         if (salaryInfo.monthlyWage) handleSalaryWageChange(salaryInfo.monthlyWage);
                       }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     />
                   </div>
                   <div className="col-span-2">
@@ -1713,16 +1862,16 @@ const Profile = () => {
 
                 <div className="grid grid-cols-4 gap-4 items-center">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Fixed Allowance</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Fixed Allowance</label>
                     <input
                       type="number"
                       value={salaryInfo.fixedAllowance}
                       disabled
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                      className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-gray-50"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Percentage</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Percentage</label>
                     <input
                       type="number"
                       step="0.01"
@@ -1743,7 +1892,7 @@ const Profile = () => {
                           });
                         }
                       }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     />
                   </div>
                   <div className="col-span-2">
@@ -1758,16 +1907,16 @@ const Profile = () => {
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Employee</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Employee</label>
                     <input
                       type="number"
                       value={salaryInfo.pfEmployee}
                       disabled
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                      className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-gray-50"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Percentage</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Percentage</label>
                     <input
                       type="number"
                       step="0.01"
@@ -1779,22 +1928,22 @@ const Profile = () => {
                         setSalaryInfo({ ...salaryInfo, pfEmployeePercentage: percent });
                         if (salaryInfo.monthlyWage) handleSalaryWageChange(salaryInfo.monthlyWage);
                       }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     />
                   </div>
                 </div>
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Employer</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Employer</label>
                     <input
                       type="number"
                       value={salaryInfo.pfEmployer}
                       disabled
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100"
+                      className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-gray-50"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Percentage</label>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Percentage</label>
                     <input
                       type="number"
                       step="0.01"
@@ -1806,7 +1955,7 @@ const Profile = () => {
                         setSalaryInfo({ ...salaryInfo, pfEmployerPercentage: percent });
                         if (salaryInfo.monthlyWage) handleSalaryWageChange(salaryInfo.monthlyWage);
                       }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                     />
                   </div>
                 </div>
@@ -1822,7 +1971,7 @@ const Profile = () => {
                   type="number"
                   value={salaryInfo.professionalTax}
                   onChange={(e) => setSalaryInfo({ ...salaryInfo, professionalTax: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                 />
                 <p className="text-xs text-gray-500 mt-1">Professional Tax deducted from the Gross salary</p>
               </div>
@@ -1831,7 +1980,8 @@ const Profile = () => {
             <button
               onClick={handleSaveSalaryInfo}
               disabled={saving}
-              className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              className="text-white px-4 py-2 rounded-lg font-medium transition-all shadow-md hover:shadow-lg disabled:opacity-50"
+              style={{ backgroundColor: '#8200db' }}
             >
               {saving ? 'Saving...' : 'Save Salary Info'}
             </button>
@@ -1872,9 +2022,11 @@ const Profile = () => {
             </p>
           </div>
         )}
+          </div>
+        </div>
       </div>
     </div>
   );
-};
+}
 
 export default Profile;

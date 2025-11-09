@@ -36,11 +36,19 @@ const Dashboard = () => {
   const [attendanceTrends, setAttendanceTrends] = useState([]);
   const [leaveDistribution, setLeaveDistribution] = useState([]);
   const [payrollSummary, setPayrollSummary] = useState([]);
+  const [checkingIn, setCheckingIn] = useState(false);
+  const [checkingOut, setCheckingOut] = useState(false);
+  const [loadingCheckInStatus, setLoadingCheckInStatus] = useState(false);
 
   useEffect(() => {
     if (['Employee', 'HR Officer', 'Payroll Officer'].includes(user?.role)) {
-      fetchCheckInStatus();
-      fetchEmployeeDashboardStats();
+      // Fetch all data in parallel for faster loading
+      Promise.all([
+        fetchCheckInStatus(),
+        fetchEmployeeDashboardStats()
+      ]).catch(error => {
+        console.error('Error loading dashboard data:', error);
+      });
     } else {
       fetchDashboardStats();
     }
@@ -80,6 +88,7 @@ const Dashboard = () => {
 
   const fetchCheckInStatus = async () => {
     try {
+      setLoadingCheckInStatus(true);
       const response = await api.get('/attendance/today-status');
       setCheckInStatus(response.data);
       if (response.data.checkIn) {
@@ -95,22 +104,28 @@ const Dashboard = () => {
       }
     } catch (error) {
       console.error('Failed to fetch check-in status:', error);
+    } finally {
+      setLoadingCheckInStatus(false);
     }
   };
 
   const fetchEmployeeDashboardStats = async () => {
     setLoading(true);
     try {
-      // Call the employee-specific dashboard stats API
-      const [statsRes, trendsRes, leaveRes] = await Promise.all([
-        api.get('/dashboard/employee/stats'),
+      // Call the employee-specific dashboard stats API - make analytics non-blocking
+      const statsRes = await api.get('/dashboard/employee/stats');
+      setStats(statsRes.data);
+      
+      // Load analytics in parallel but don't block the main stats
+      Promise.all([
         api.get('/dashboard/analytics/attendance-trends').catch(() => ({ data: [] })),
         api.get('/dashboard/analytics/leave-distribution').catch(() => ({ data: [] }))
-      ]);
-      
-      setStats(statsRes.data);
-      setAttendanceTrends(trendsRes.data);
-      setLeaveDistribution(leaveRes.data);
+      ]).then(([trendsRes, leaveRes]) => {
+        setAttendanceTrends(trendsRes.data);
+        setLeaveDistribution(leaveRes.data);
+      }).catch(error => {
+        console.error('Failed to load analytics:', error);
+      });
     } catch (error) {
       console.error('Failed to fetch employee dashboard stats:', error);
       toast.error('Failed to load dashboard statistics');
@@ -120,19 +135,24 @@ const Dashboard = () => {
   };
 
   const fetchDashboardStats = async () => {
+    setLoading(true);
     try {
-      const [statsRes, trendsRes, leaveRes, payrollRes] = await Promise.all([
-        api.get('/dashboard/stats'),
+      // Load main stats first, then analytics in parallel (non-blocking)
+      const statsRes = await api.get('/dashboard/stats');
+      setStats(statsRes.data);
+      
+      // Load analytics in parallel but don't block the main stats
+      Promise.all([
         api.get('/dashboard/analytics/attendance-trends').catch(() => ({ data: [] })),
         api.get('/dashboard/analytics/leave-distribution').catch(() => ({ data: [] })),
         api.get('/dashboard/analytics/payroll-summary').catch(() => ({ data: [] }))
-      ]);
-     
-      
-      setStats(statsRes.data);
-      setAttendanceTrends(trendsRes.data);
-      setLeaveDistribution(leaveRes.data);
-      setPayrollSummary(payrollRes.data);
+      ]).then(([trendsRes, leaveRes, payrollRes]) => {
+        setAttendanceTrends(trendsRes.data);
+        setLeaveDistribution(leaveRes.data);
+        setPayrollSummary(payrollRes.data);
+      }).catch(error => {
+        console.error('Failed to load analytics:', error);
+      });
     } catch (error) {
       console.error('Failed to fetch dashboard stats:', error);
       toast.error('Failed to load dashboard statistics');
@@ -144,6 +164,7 @@ const Dashboard = () => {
 
   const handleCheckIn = async () => {
     try {
+      setCheckingIn(true);
       await api.post('/attendance/checkin');
       toast.success('Checked in successfully!');
       fetchCheckInStatus();
@@ -153,16 +174,21 @@ const Dashboard = () => {
       setCheckInTime(now);
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to check in');
+    } finally {
+      setCheckingIn(false);
     }
   };
 
   const handleCheckOut = async () => {
     try {
+      setCheckingOut(true);
       await api.post('/attendance/checkout');
       toast.success('Checked out successfully!');
       fetchCheckInStatus();
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to check out');
+    } finally {
+      setCheckingOut(false);
     }
   };
 
@@ -182,10 +208,10 @@ const Dashboard = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
+      <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mb-4"></div>
-          <p className="text-gray-600">Loading dashboard...</p>
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 mb-4" style={{ borderColor: '#8200db' }}></div>
+          <p className="text-gray-600 font-medium">Loading dashboard...</p>
         </div>
       </div>
     );
@@ -206,59 +232,110 @@ const Dashboard = () => {
         </div>
 
         {/* Check-In/Check-Out Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Today's Attendance</h2>
-          <div className="flex items-center justify-between">
-            <div className="flex-1">
-              {checkInStatus.checkedIn && !checkInStatus.checkedOut && (
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Checked in at {checkInStatus.checkIn}</p>
-                  <p className="text-sm text-gray-500">Working since {checkInTime ? formatTimeSince(checkInTime) : 'checking...'}</p>
-                  {(currentExtraHours > 0 || currentExtraMinutes > 0) && (
-                    <p className="text-sm text-orange-600 font-medium mt-1">
-                      Extra Time: {currentExtraHours > 0 && `${currentExtraHours}h `}{currentExtraMinutes > 0 && `${currentExtraMinutes}m`}
-                    </p>
-                  )}
-                </div>
-              )}
-              {checkInStatus.checkedIn && checkInStatus.checkedOut && (
-                <div className="space-y-1">
-                  <p className="text-sm text-gray-600">Checked in: {checkInStatus.checkIn}</p>
-                  <p className="text-sm text-gray-600">Checked out: {checkInStatus.checkOut}</p>
-                </div>
-              )}
-              {!checkInStatus.checkedIn && (
-                <p className="text-sm text-gray-600">Not checked in yet</p>
-              )}
+        <div className="bg-white rounded-xl shadow-lg border-2 border-gray-200 p-6">
+          <div className="mb-4 pb-3 border-b-2" style={{ borderColor: '#8200db' }}>
+            <h2 className="text-xl font-semibold" style={{ color: '#8200db' }}>Today's Attendance</h2>
             </div>
-            <div className="flex gap-3">
-              {!checkInStatus.checkedIn ? (
-                <button
-                  onClick={handleCheckIn}
-                  className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 font-medium transition-colors"
-                >
-                  Check IN
-                </button>
-              ) : !checkInStatus.checkedOut ? (
-                <button
-                  onClick={handleCheckOut}
-                  className="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 font-medium transition-colors"
-                >
-                  Check Out
-                </button>
-              ) : null}
+          {loadingCheckInStatus ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="text-center">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 mb-2" style={{ borderColor: '#8200db' }}></div>
+                <p className="text-sm text-gray-600">Loading attendance status...</p>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div className="flex-1 space-y-2">
+                {checkInStatus.checkedIn && !checkInStatus.checkedOut && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <p className="text-sm font-medium text-gray-900">Checked in at <span className="text-green-600">{checkInStatus.checkIn}</span></p>
+                    </div>
+                    <p className="text-xs text-gray-600 ml-7">Working since {checkInTime ? formatTimeSince(checkInTime) : 'checking...'}</p>
+                    {(currentExtraHours > 0 || currentExtraMinutes > 0) && (
+                      <div className="ml-7 mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 border-2 border-orange-200 rounded-lg">
+                        <svg className="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <p className="text-xs font-medium text-orange-600">
+                          Extra Time: {currentExtraHours > 0 && `${currentExtraHours}h `}{currentExtraMinutes > 0 && `${currentExtraMinutes}m`}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {checkInStatus.checkedIn && checkInStatus.checkedOut && (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <p className="text-sm font-medium text-gray-900">Attendance completed for today</p>
+                    </div>
+                    <div className="ml-7 space-y-1">
+                      <p className="text-xs text-gray-600">Checked in: <span className="font-medium text-gray-900">{checkInStatus.checkIn}</span></p>
+                      <p className="text-xs text-gray-600">Checked out: <span className="font-medium text-gray-900">{checkInStatus.checkOut}</span></p>
+                    </div>
+                  </div>
+                )}
+                {!checkInStatus.checkedIn && (
+                  <div className="flex items-center gap-2">
+                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="text-sm text-gray-600">Not checked in yet</p>
+                  </div>
+                )}
+              </div>
+              <div className="flex gap-3">
+                {!checkInStatus.checkedIn ? (
+                  <button
+                    onClick={handleCheckIn}
+                    disabled={checkingIn}
+                    className="bg-green-600 text-white px-6 py-2.5 rounded-lg hover:bg-green-700 font-medium transition-all disabled:opacity-50 flex items-center gap-2 shadow-md hover:shadow-lg border-2 border-green-700"
+                  >
+                    {checkingIn && (
+                      <div className="inline-block animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                    )}
+                    {checkingIn ? 'Clocking In...' : 'Clock In'}
+                  </button>
+                ) : !checkInStatus.checkedOut ? (
+                  <button
+                    onClick={handleCheckOut}
+                    disabled={checkingOut}
+                    className="bg-red-600 text-white px-6 py-2.5 rounded-lg hover:bg-red-700 font-medium transition-all disabled:opacity-50 flex items-center gap-2 shadow-md hover:shadow-lg border-2 border-red-700"
+                  >
+                    {checkingOut && (
+                      <div className="inline-block animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                    )}
+                    {checkingOut ? 'Clocking Out...' : 'Clock Out'}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Today's Status */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-all duration-300">
+          <div className="bg-white rounded-xl shadow-lg border-2 border-gray-200 p-4 hover:shadow-xl transition-all duration-300">
             <div className="flex items-center justify-between">
               <div className="flex-1">
-                <p className="text-xs font-medium text-gray-600 mb-1">Today's Status</p>
-                <p className={`text-2xl font-bold ${
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <div className={`w-1.5 h-1.5 rounded-full ${
+                    checkInStatus.checkedIn && !checkInStatus.checkedOut 
+                      ? 'bg-green-500' 
+                      : checkInStatus.checkedOut 
+                      ? 'bg-blue-500' 
+                      : 'bg-gray-400'
+                  }`}></div>
+                  <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Today's Status</p>
+                </div>
+                <p className={`text-2xl font-bold mb-0.5 ${
                   checkInStatus.checkedIn && !checkInStatus.checkedOut 
                     ? 'text-green-600' 
                     : checkInStatus.checkedOut 
@@ -271,16 +348,16 @@ const Dashboard = () => {
                     ? 'Completed' 
                     : 'Not Started'}
                 </p>
-                <p className="text-xs text-gray-500 mt-0.5">Current status</p>
+                <p className="text-xs text-gray-500">Current status</p>
               </div>
-              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center border-2 ${
                 checkInStatus.checkedIn && !checkInStatus.checkedOut 
-                  ? 'bg-green-50' 
+                  ? 'bg-green-50 border-green-200' 
                   : checkInStatus.checkedOut 
-                  ? 'bg-blue-50' 
-                  : 'bg-gray-50'
+                  ? 'bg-blue-50 border-blue-200' 
+                  : 'bg-gray-50 border-gray-200'
               }`}>
-                <svg className={`w-6 h-6 ${
+                <svg className={`w-5 h-5 ${
                   checkInStatus.checkedIn && !checkInStatus.checkedOut 
                     ? 'text-green-600' 
                     : checkInStatus.checkedOut 
@@ -295,17 +372,34 @@ const Dashboard = () => {
 
           {/* Pending Leave Requests */}
           <div 
-            className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-all duration-300 cursor-pointer group"
+            className="bg-white rounded-xl shadow-lg border-2 border-gray-200 p-4 hover:shadow-xl transition-all duration-300 cursor-pointer group"
             onClick={() => navigate('/leaves')}
           >
             <div className="flex items-center justify-between">
               <div className="flex-1">
-                <p className="text-xs font-medium text-gray-600 mb-1">Pending Leaves</p>
-                <p className="text-2xl font-bold text-orange-600">{stats.pendingLeaves}</p>
-                <p className="text-xs text-gray-500 mt-0.5">Awaiting approval</p>
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <div className="w-1.5 h-1.5 rounded-full bg-orange-500"></div>
+                  <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Pending Leaves</p>
+                </div>
+                {stats.pendingLeaves > 0 ? (
+                  <>
+                    <p className="text-2xl font-bold text-orange-600 mb-0.5">{stats.pendingLeaves}</p>
+                    <p className="text-xs text-gray-500">Awaiting approval</p>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                      </svg>
+                      <p className="text-xs font-semibold text-gray-400">No data found</p>
+                    </div>
+                    <p className="text-xs text-gray-500">No pending leaves</p>
+                  </>
+                )}
               </div>
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-orange-50 group-hover:scale-110 transition-transform">
-                <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-orange-50 border-2 border-orange-200 group-hover:scale-110 transition-transform">
+                <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
@@ -314,17 +408,20 @@ const Dashboard = () => {
 
           {/* This Month Attendance */}
           <div 
-            className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-all duration-300 cursor-pointer group"
+            className="bg-white rounded-xl shadow-lg border-2 border-gray-200 p-4 hover:shadow-xl transition-all duration-300 cursor-pointer group"
             onClick={() => navigate('/attendance')}
           >
             <div className="flex items-center justify-between">
               <div className="flex-1">
-                <p className="text-xs font-medium text-gray-600 mb-1">This Month</p>
-                <p className="text-2xl font-bold text-purple-600">{stats.thisMonthPresent || stats.todayAttendance?.present || 0}</p>
-                <p className="text-xs text-gray-500 mt-0.5">Days present</p>
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: '#8200db' }}></div>
+                  <p className="text-xs font-semibold text-gray-700 uppercase tracking-wide">This Month</p>
+                </div>
+                <p className="text-2xl font-bold mb-0.5" style={{ color: '#8200db' }}>{stats.thisMonthPresent || stats.todayAttendance?.present || 0}</p>
+                <p className="text-xs text-gray-500">Days present</p>
               </div>
-              <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-purple-50 group-hover:scale-110 transition-transform">
-                <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center border-2" style={{ backgroundColor: '#f3e8ff', borderColor: '#e9d5ff' }}>
+                <svg className="w-5 h-5" style={{ color: '#8200db' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                 </svg>
               </div>
@@ -381,20 +478,20 @@ const Dashboard = () => {
           </div>
 
           {/* Leave Distribution Chart */}
-          {leaveDistribution.length > 1 && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-900">Leave Distribution</h2>
-                  <p className="text-sm text-gray-500 mt-1">Last 30 days breakdown</p>
-                </div>
-                <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                  <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
-                  </svg>
-                </div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Leave Distribution</h2>
+                <p className="text-sm text-gray-500 mt-1">Last 30 days breakdown</p>
               </div>
+              <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+                </svg>
+              </div>
+            </div>
+            {leaveDistribution.length > 0 ? (
               <ResponsiveContainer width="100%" height={320}>
                 <PieChart>
                   <Pie
@@ -422,8 +519,17 @@ const Dashboard = () => {
                   />
                 </PieChart>
               </ResponsiveContainer>
-            </div>
-          )}
+            ) : (
+              <div className="text-center py-16 text-gray-400">
+                <svg className="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+                </svg>
+                <p className="text-sm font-medium">No data found</p>
+                <p className="text-xs text-gray-500 mt-1">No leave distribution data available</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -529,8 +635,17 @@ const Dashboard = () => {
             <div className="flex items-center justify-between">
               <div className="flex-1">
                 <p className="text-xs font-medium text-gray-600 mb-1">Pending Leave Requests</p>
-                <p className="text-2xl font-bold text-orange-600">{stats.pendingLeaves}</p>
-                <p className="text-xs text-gray-500 mt-0.5">Awaiting approval</p>
+                {stats.pendingLeaves > 0 ? (
+                  <>
+                    <p className="text-2xl font-bold text-orange-600">{stats.pendingLeaves}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Awaiting approval</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-medium text-gray-400 mt-1">No data found</p>
+                    <p className="text-xs text-gray-500 mt-0.5">No pending leaves</p>
+                  </>
+                )}
               </div>
               <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-orange-50 group-hover:scale-110 transition-transform">
                 <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -633,20 +748,20 @@ const Dashboard = () => {
         </div>
 
         {/* Leave Distribution Chart */}
-        {leaveDistribution.length > 0 && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900">Leave Distribution</h2>
-                <p className="text-sm text-gray-500 mt-1">Last 30 days breakdown</p>
-              </div>
-              <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
-                </svg>
-              </div>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Leave Distribution</h2>
+              <p className="text-sm text-gray-500 mt-1">Last 30 days breakdown</p>
             </div>
+            <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+              <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+              </svg>
+            </div>
+          </div>
+          {leaveDistribution.length > 0 ? (
             <ResponsiveContainer width="100%" height={320}>
               <PieChart>
                 <Pie
@@ -674,8 +789,17 @@ const Dashboard = () => {
                 />
               </PieChart>
             </ResponsiveContainer>
-          </div>
-        )}
+          ) : (
+            <div className="text-center py-16 text-gray-400">
+              <svg className="w-12 h-12 mx-auto mb-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
+              </svg>
+              <p className="text-sm font-medium">No data found</p>
+              <p className="text-xs text-gray-500 mt-1">No leave distribution data available</p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Payroll Summary (Admin/Payroll Officer only) */}

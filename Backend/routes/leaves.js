@@ -59,11 +59,20 @@ router.get('/', authenticate, async (req, res) => {
 
     // Search
     if (req.query.search) {
-      conditions.push(`(
-        e.first_name ILIKE $${params.length + 1} OR
-        e.last_name ILIKE $${params.length + 1} OR
-        e.employee_id ILIKE $${params.length + 1}
-      )`);
+      // For employees or HR/Payroll viewing their own: search by leave type and reason
+      if (req.user.role === 'Employee' || (['HR Officer', 'Payroll Officer'].includes(req.user.role) && req.query.viewMode !== 'all')) {
+        conditions.push(`(
+          l.leave_type ILIKE $${params.length + 1} OR
+          l.reason ILIKE $${params.length + 1}
+        )`);
+      } else {
+        // For admin/manager viewing all: search by employee name or ID
+        conditions.push(`(
+          e.first_name ILIKE $${params.length + 1} OR
+          e.last_name ILIKE $${params.length + 1} OR
+          e.employee_id ILIKE $${params.length + 1}
+        )`);
+      }
       params.push(`%${req.query.search}%`);
     }
 
@@ -136,8 +145,8 @@ const getAvailableDays = async (employeeId, leaveType) => {
   return availableDays;
 };
 
-// Apply for leave (Employee, HR Officer, Payroll Officer)
-router.post('/', authenticate, authorize('Employee', 'HR Officer', 'Payroll Officer'), [
+// Apply for leave (Admin, Employee, HR Officer, Payroll Officer)
+router.post('/', authenticate, authorize('Admin', 'Employee', 'HR Officer', 'Payroll Officer'), [
   body('leaveType').notEmpty(),
   body('startDate').isISO8601(),
   body('endDate').isISO8601(),
@@ -150,19 +159,36 @@ router.post('/', authenticate, authorize('Employee', 'HR Officer', 'Payroll Offi
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { leaveType, startDate, endDate, reason, attachmentUrl } = req.body;
+    const { leaveType, startDate, endDate, reason, attachmentUrl, employeeId: providedEmployeeId } = req.body;
 
     // Get employee ID
-    const employeeResult = await pool.query(
-      'SELECT id FROM employees WHERE user_id = $1',
-      [req.user.id]
-    );
+    let employeeId;
+    
+    // If Admin provides employeeId, use it; otherwise use the current user's employee ID
+    if (req.user.role === 'Admin' && providedEmployeeId) {
+      // Verify the employee exists
+      const employeeCheck = await pool.query(
+        'SELECT id FROM employees WHERE id = $1',
+        [providedEmployeeId]
+      );
+      
+      if (employeeCheck.rows.length === 0) {
+        return res.status(404).json({ error: 'Employee not found' });
+      }
+      
+      employeeId = providedEmployeeId;
+    } else {
+      const employeeResult = await pool.query(
+        'SELECT id FROM employees WHERE user_id = $1',
+        [req.user.id]
+      );
 
-    if (employeeResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Employee not found' });
+      if (employeeResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Employee not found' });
+      }
+
+      employeeId = employeeResult.rows[0].id;
     }
-
-    const employeeId = employeeResult.rows[0].id;
 
     // Validate dates
     if (new Date(startDate) > new Date(endDate)) {

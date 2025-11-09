@@ -12,12 +12,21 @@ const Payroll = () => {
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [showPayslipModal, setShowPayslipModal] = useState(false);
   const [selectedPayroll, setSelectedPayroll] = useState(null);
+  const [currentPayrollId, setCurrentPayrollId] = useState(null); // Store the current payroll ID to prevent stale data
   const [payslipTab, setPayslipTab] = useState('workedDays');
   const [workedDays, setWorkedDays] = useState(null);
   const [showWarningModal, setShowWarningModal] = useState(false);
   const [warningType, setWarningType] = useState(null);
   const [warningEmployees, setWarningEmployees] = useState([]);
   const [loadingWarning, setLoadingWarning] = useState(false);
+  const [validating, setValidating] = useState(false);
+  const [loadingPayrunDetails, setLoadingPayrunDetails] = useState(false);
+  const [loadingPayslip, setLoadingPayslip] = useState(false);
+  const [computing, setComputing] = useState(false);
+  const [validatingPayrun, setValidatingPayrun] = useState(false);
+  const [showGenerateConfirm, setShowGenerateConfirm] = useState(false);
+  const [showValidatePayrunConfirm, setShowValidatePayrunConfirm] = useState(false);
+  const [payrunToValidate, setPayrunToValidate] = useState(null);
   const [generateData, setGenerateData] = useState({
     month: new Date().getMonth() + 1,
     year: new Date().getFullYear()
@@ -64,21 +73,29 @@ const Payroll = () => {
 
   const fetchPayrunDetails = async (payrunId) => {
     try {
+      setLoadingPayrunDetails(true);
       const response = await api.get(`/payroll/payrun/${payrunId}`);
       setPayrolls(response.data);
       setSelectedPayrun(payrunId);
     } catch (error) {
       console.error('Failed to fetch payrun details:', error);
       toast.error('Failed to load payrun details');
+    } finally {
+      setLoadingPayrunDetails(false);
     }
   };
 
-  const handleGeneratePayroll = async (e) => {
+  const handleGeneratePayrollClick = (e) => {
     e.preventDefault();
+    setShowGenerateConfirm(true);
+  };
+
+  const handleGeneratePayrollConfirm = async () => {
     try {
       setLoading(true);
       await api.post('/payroll/generate', generateData);
       setShowGenerateModal(false);
+      setShowGenerateConfirm(false);
       toast.success('Payroll generated successfully for all employees');
       if (activeTab === 'payrun') {
         fetchPayruns();
@@ -87,32 +104,60 @@ const Payroll = () => {
       }
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to generate payroll');
+      setShowGenerateConfirm(false);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleValidatePayrun = async (payrunId) => {
+  const handleGeneratePayrollCancel = () => {
+    setShowGenerateConfirm(false);
+  };
+
+  const handleValidatePayrunClick = (payrunId) => {
+    setPayrunToValidate(payrunId);
+    setShowValidatePayrunConfirm(true);
+  };
+
+  const handleValidatePayrunConfirm = async () => {
+    if (!payrunToValidate) return;
     try {
-      await api.put(`/payroll/payrun/${payrunId}/validate`);
+      setValidatingPayrun(true);
+      await api.put(`/payroll/payrun/${payrunToValidate}/validate`);
       toast.success('Payrun validated successfully');
       fetchPayruns();
-      if (selectedPayrun === payrunId) {
-        fetchPayrunDetails(payrunId);
+      if (selectedPayrun === payrunToValidate) {
+        fetchPayrunDetails(payrunToValidate);
       }
+      setShowValidatePayrunConfirm(false);
+      setPayrunToValidate(null);
     } catch (error) {
       toast.error('Failed to validate payrun');
+      setShowValidatePayrunConfirm(false);
+      setPayrunToValidate(null);
+    } finally {
+      setValidatingPayrun(false);
     }
+  };
+
+  const handleValidatePayrunCancel = () => {
+    setShowValidatePayrunConfirm(false);
+    setPayrunToValidate(null);
   };
 
   const handleViewPayslip = async (payroll) => {
     try {
-      const response = await api.get(`/payroll/payslip/${payroll.id}`);
+      setLoadingPayslip(true);
+      // Store the payroll ID immediately to ensure we use the correct one
+      const payrollId = payroll.id;
+      setCurrentPayrollId(payrollId);
+      
+      const response = await api.get(`/payroll/payslip/${payrollId}`);
       setSelectedPayroll(response.data);
       
       // Fetch worked days
       try {
-        const workedDaysResponse = await api.get(`/payroll/${payroll.id}/worked-days`);
+        const workedDaysResponse = await api.get(`/payroll/${payrollId}/worked-days`);
         setWorkedDays(workedDaysResponse.data);
       } catch (error) {
         console.error('Failed to fetch worked days:', error);
@@ -122,6 +167,8 @@ const Payroll = () => {
       setPayslipTab('workedDays');
     } catch (error) {
       toast.error('Failed to load payslip');
+    } finally {
+      setLoadingPayslip(false);
     }
   };
 
@@ -132,6 +179,7 @@ const Payroll = () => {
     const currentPayrollId = selectedPayroll.id;
     
     try {
+      setComputing(true);
       // Recalculate payroll
       const response = await api.post('/payroll/generate', {
         employeeId: selectedPayroll.employee_id,
@@ -156,24 +204,53 @@ const Payroll = () => {
       setPayslipTab('salaryComputation');
     } catch (error) {
       toast.error('Failed to compute payroll');
+    } finally {
+      setComputing(false);
     }
   };
 
   const handleValidate = async () => {
-    if (!selectedPayroll) return;
+    // Use currentPayrollId instead of selectedPayroll.id to avoid stale data
+    const payrollIdToValidate = currentPayrollId || selectedPayroll?.id;
+    
+    if (!payrollIdToValidate || validating) {
+      console.error('Cannot validate: payrollIdToValidate =', payrollIdToValidate, 'validating =', validating);
+      return;
+    }
+    
     try {
-      await api.put(`/payroll/validate/${selectedPayroll.id}`);
-      toast.success('Payslip validated successfully');
-      const response = await api.get(`/payroll/payslip/${selectedPayroll.id}`);
-      setSelectedPayroll(response.data);
+      setValidating(true);
+      
+      // Log for debugging
+      console.log('Validating payroll ID:', payrollIdToValidate, 'Employee:', selectedPayroll?.first_name, selectedPayroll?.last_name);
+      
+      // Validate the individual employee's payslip using the stored payroll ID
+      const response = await api.put(`/payroll/validate/${payrollIdToValidate}`);
+      
+      if (response.data) {
+        toast.success(`Payslip validated successfully for ${selectedPayroll?.first_name || 'employee'}`);
+        
+        // Refresh the payslip data to get updated validation status
+        const updatedPayslip = await api.get(`/payroll/payslip/${payrollIdToValidate}`);
+        setSelectedPayroll(updatedPayslip.data);
+        
+        // Refresh payrun details if we're viewing a payrun to update the status in the table
+        if (selectedPayrun) {
+          await fetchPayrunDetails(selectedPayrun);
+        }
+      }
     } catch (error) {
-      toast.error('Failed to validate payslip');
+      console.error('Validate error:', error);
+      toast.error(error.response?.data?.error || 'Failed to validate payslip');
+    } finally {
+      setValidating(false);
     }
   };
 
   const handleNewPayslip = () => {
     setShowPayslipModal(false);
     setSelectedPayroll(null);
+    setCurrentPayrollId(null);
     setWorkedDays(null);
     setShowGenerateModal(true);
   };
@@ -202,292 +279,403 @@ const Payroll = () => {
   };
 
   if (loading && !dashboardData && !payruns.length) {
-    return <div className="text-center py-12">Loading...</div>;
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 mb-4" style={{ borderColor: '#8200db' }}></div>
+          <p className="text-gray-600 font-medium">Loading payroll data...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Payroll</h1>
-      </div>
-
-      {/* Tabs */}
-      <div className="bg-white rounded-lg shadow-md">
-        <div className="border-b">
-          <div className="flex">
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className={`px-6 py-3 font-medium ${
-                activeTab === 'dashboard'
-                  ? 'border-b-2 border-purple-600 text-purple-600'
-                  : 'text-gray-600 hover:text-gray-800'
-              }`}
-            >
-              Dashboard
-            </button>
-            <button
-              onClick={() => setActiveTab('payrun')}
-              className={`px-6 py-3 font-medium ${
-                activeTab === 'payrun'
-                  ? 'border-b-2 border-purple-600 text-purple-600'
-                  : 'text-gray-600 hover:text-gray-800'
-              }`}
-            >
-              Payrun
-            </button>
-          </div>
-        </div>
-
-        <div className="p-6">
-          {/* Dashboard Tab */}
-          {activeTab === 'dashboard' && (
-            <div className="space-y-6">
-              {/* Warnings Section */}
-              {dashboardData?.warnings && dashboardData.warnings.length > 0 && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                  <h3 className="font-semibold text-yellow-800 mb-2">Warnings</h3>
-                  <ul className="space-y-1">
-                    {dashboardData.warnings.map((warning, index) => (
-                      <li 
-                        key={index} 
-                        className="text-yellow-700 cursor-pointer hover:text-yellow-900 hover:underline"
-                        onClick={() => handleWarningClick(warning.type)}
-                      >
-                        {warning.message}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Payrun Section */}
-              <div>
-                <h3 className="font-semibold text-gray-800 mb-4">Recent Payruns</h3>
-                <div className="space-y-2">
-                  {dashboardData?.payruns && dashboardData.payruns.length > 0 ? (
-                    dashboardData.payruns.map((payrun, index) => (
-                      <div
-                        key={index}
-                        className="bg-gray-50 border border-gray-200 rounded-lg p-4 hover:bg-gray-100 cursor-pointer"
-                        onClick={() => {
-                          setActiveTab('payrun');
-                          fetchPayrunDetails(payrun.payrun_id);
-                        }}
-                      >
-                        <div className="flex justify-between items-center">
-                          <div>
-                            <p className="font-semibold">
-                              Payrun for {months[payrun.month - 1]} {payrun.year}
-                            </p>
-                            <p className="text-sm text-gray-600">
-                              {payrun.employee_count} Payslips
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm text-gray-600">Net: ₹{parseFloat(payrun.total_net || 0).toFixed(2)}</p>
-                            <p className="text-sm text-gray-600">Employer Cost: ₹{parseFloat(payrun.total_employer_cost || 0).toFixed(2)}</p>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-gray-500">No payruns found</p>
-                  )}
-                </div>
+    <div className="min-h-screen bg-gray-50">
+      {/* Generate Payroll Confirmation Modal */}
+      {showGenerateConfirm && (
+        <div className="fixed inset-0 bg-gray-40 bg-opacity-10 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md mx-4 border-2 border-[#8200db]">
+            <div className="flex items-center mb-4">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center mr-3" style={{ backgroundColor: '#8200db20' }}>
+                <svg className="w-5 h-5" style={{ color: '#8200db' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
               </div>
-
-              {/* Statistics Section */}
-              <div>
-                <h3 className="font-semibold text-gray-800 mb-4">Statistics</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <p className="text-sm text-gray-600 mb-1">Employer Cost</p>
-                    <p className="text-2xl font-bold text-blue-600">
-                      ₹{parseFloat(dashboardData?.statistics?.monthly_employer_cost || 0).toFixed(2)}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">Monthly</p>
-                  </div>
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                    <p className="text-sm text-gray-600 mb-1">Employee Count</p>
-                    <p className="text-2xl font-bold text-green-600">
-                      {dashboardData?.statistics?.employee_count || 0}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">Monthly</p>
-                  </div>
-                </div>
+              <div className="flex-1">
+                <h3 className="text-base font-semibold" style={{ color: '#8200db' }}>Generate Payroll</h3>
+                <p className="text-xs text-gray-600 mt-0.5">Generate payroll for all employees</p>
               </div>
             </div>
-          )}
+            
+            <div className="mb-4 pb-4 border-b-2 border-gray-200">
+              <p className="text-sm text-gray-700">
+                Are you sure you want to generate payroll for <span className="font-semibold" style={{ color: '#8200db' }}>{months[generateData.month - 1]} {generateData.year}</span>?
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                This will create payroll records for all active employees for the selected month and year.
+              </p>
+            </div>
 
-          {/* Payrun Tab */}
-          {activeTab === 'payrun' && (
-            <div className="space-y-6">
-              <div className="flex justify-between items-center">
-                <h3 className="font-semibold text-gray-800">Payrun List</h3>
-                <div className="flex space-x-2">
-                  <button
-                    onClick={() => setShowGenerateModal(true)}
-                    className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700"
-                  >
-                    Payrun
-                  </button>
-                  {selectedPayrun && (
-                    <button
-                      onClick={() => handleValidatePayrun(selectedPayrun)}
-                      className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
-                    >
-                      Validate
-                    </button>
-                  )}
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={handleGeneratePayrollCancel}
+                className="px-4 py-2 border-2 border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-all font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleGeneratePayrollConfirm}
+                disabled={loading}
+                className="px-4 py-2 rounded-lg text-sm text-white transition-all font-medium disabled:opacity-50 shadow-md hover:shadow-lg"
+                style={{ backgroundColor: '#8200db' }}
+              >
+                {loading ? 'Generating...' : 'Generate'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Validate Payrun Confirmation Modal */}
+      {showValidatePayrunConfirm && payrunToValidate && (
+        <div className="fixed inset-0 bg-gray-40 bg-opacity-10 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md mx-4 border-2 border-[#8200db]">
+            <div className="flex items-center mb-4">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center mr-3" style={{ backgroundColor: '#8200db20' }}>
+                <svg className="w-5 h-5" style={{ color: '#8200db' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-semibold" style={{ color: '#8200db' }}>Validate Payrun</h3>
+                <p className="text-xs text-gray-600 mt-0.5">Confirm payrun validation</p>
+              </div>
+            </div>
+            
+            <div className="mb-4 pb-4 border-b-2 border-gray-200">
+              <p className="text-sm text-gray-700">
+                Are you sure you want to validate this payrun?
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Once validated, the payrun will be marked as approved and cannot be modified.
+              </p>
+            </div>
+
+            <div className="flex justify-end space-x-2">
+              <button
+                onClick={handleValidatePayrunCancel}
+                className="px-4 py-2 border-2 border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-all font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleValidatePayrunConfirm}
+                disabled={validatingPayrun}
+                className="px-4 py-2 rounded-lg text-sm text-white transition-all font-medium shadow-md hover:shadow-lg disabled:opacity-50"
+                style={{ backgroundColor: '#8200db' }}
+              >
+                {validatingPayrun ? 'Validating...' : 'Validate'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {/* Tabs */}
+      <div className="max-w-7xl mx-auto px-6 py-6">
+        <div className="bg-white rounded-xl shadow-lg border-2 border-gray-200 overflow-hidden">
+          <div className="border-b-2 border-gray-200">
+            <div className="flex">
+              <button
+                onClick={() => setActiveTab('dashboard')}
+                className={`px-6 py-3 font-medium text-sm transition-all relative ${
+                  activeTab === 'dashboard'
+                    ? 'text-white'
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+                style={activeTab === 'dashboard' ? { backgroundColor: '#8200db' } : {}}
+              >
+                Dashboard
+                {activeTab === 'dashboard' && (
+                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-white"></div>
+                )}
+              </button>
+              <button
+                onClick={() => setActiveTab('payrun')}
+                className={`px-6 py-3 font-medium text-sm transition-all relative ${
+                  activeTab === 'payrun'
+                    ? 'text-white'
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+                style={activeTab === 'payrun' ? { backgroundColor: '#8200db' } : {}}
+              >
+                Payrun
+                {activeTab === 'payrun' && (
+                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-white"></div>
+                )}
+              </button>
+            </div>
+          </div>
+
+          <div className="p-8">
+            {/* Dashboard Tab */}
+            {activeTab === 'dashboard' && (
+              <div className="space-y-8">
+                {/* Warnings Section */}
+                {dashboardData?.warnings && dashboardData.warnings.length > 0 && (
+                  <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 border-l-4 rounded-lg p-6 shadow-md" style={{ borderColor: '#f59e0b' }}>
+                    <div className="flex items-center mb-4">
+                      <svg className="w-6 h-6 mr-3" style={{ color: '#f59e0b' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      <h3 className="text-xl font-bold" style={{ color: '#f59e0b' }}>Warnings</h3>
+                    </div>
+                    <ul className="space-y-3">
+                      {dashboardData.warnings.map((warning, index) => (
+                        <li 
+                          key={index} 
+                          className="text-gray-700 cursor-pointer hover:underline font-medium p-3 bg-white rounded-lg border border-yellow-200 hover:border-yellow-400 transition-all"
+                          onClick={() => handleWarningClick(warning.type)}
+                        >
+                          {warning.message}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Payrun Section */}
+                <div>
+                  <div className="flex items-center mb-4 pb-2 border-b-2" style={{ borderColor: '#8200db' }}>
+                    <h3 className="text-base font-semibold" style={{ color: '#8200db' }}>Recent Payruns</h3>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2">
+                    {dashboardData?.payruns && dashboardData.payruns.length > 0 ? (
+                      dashboardData.payruns.map((payrun, index) => (
+                        <div
+                          key={index}
+                          className="bg-white border border-gray-200 rounded p-2 hover:shadow-md cursor-pointer transition-all hover:border-[#8200db]"
+                          onClick={() => {
+                            setActiveTab('payrun');
+                            fetchPayrunDetails(payrun.payrun_id);
+                          }}
+                        >
+                          <div className="flex justify-between items-center">
+                            <div>
+                              <p className="text-sm font-medium text-gray-800">
+                                Payrun for {months[payrun.month - 1]} {payrun.year}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {payrun.employee_count} Payslips
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xs font-medium text-gray-700">Net: <span className="font-semibold" style={{ color: '#8200db' }}>₹{parseFloat(payrun.total_net || 0).toFixed(2)}</span></p>
+                              <p className="text-xs text-gray-500">Employer Cost: ₹{parseFloat(payrun.total_employer_cost || 0).toFixed(2)}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="bg-white border border-gray-200 rounded p-6 text-center">
+                        <p className="text-gray-500 text-xs">No payruns found</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
+            )}
 
-              {/* Payrun Summary Table */}
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr className="bg-gray-50 border-b">
-                      <th className="text-left py-3 px-4 font-semibold">Payrun</th>
-                      <th className="text-right py-3 px-4 font-semibold">Employer Cost</th>
-                      <th className="text-right py-3 px-4 font-semibold">Gross</th>
-                      <th className="text-right py-3 px-4 font-semibold">Net</th>
-                      <th className="text-center py-3 px-4 font-semibold">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {payruns.length === 0 ? (
-                      <tr>
-                        <td colSpan="5" className="text-center py-8 text-gray-500">
-                          No payruns found
-                        </td>
-                      </tr>
-                    ) : (
-                      payruns.map((payrun) => (
-                        <tr
-                          key={payrun.payrun_id}
-                          className="border-b hover:bg-gray-50 cursor-pointer"
-                          onClick={() => fetchPayrunDetails(payrun.payrun_id)}
-                        >
-                          <td className="py-3 px-4">
-                            <span className={`font-semibold ${
-                              selectedPayrun === payrun.payrun_id ? 'text-purple-600' : ''
-                            }`}>
-                              {payrun.payrun_id}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            ₹{parseFloat(payrun.total_employer_cost || 0).toFixed(2)}
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            ₹{parseFloat(payrun.total_gross || 0).toFixed(2)}
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            ₹{parseFloat(payrun.total_net || 0).toFixed(2)}
-                          </td>
-                          <td className="py-3 px-4 text-center">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                fetchPayrunDetails(payrun.payrun_id);
-                              }}
-                              className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700"
-                            >
-                              View
-                            </button>
-                          </td>
-                        </tr>
-                      ))
+            {/* Payrun Tab */}
+            {activeTab === 'payrun' && (
+              <div className="space-y-6">
+                <div className="flex justify-between items-center pb-3 border-b-2" style={{ borderColor: '#8200db' }}>
+                  <h3 className="text-lg font-semibold" style={{ color: '#8200db' }}>Payrun List</h3>
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => setShowGenerateModal(true)}
+                      className="px-4 py-2 rounded-lg text-white text-sm font-medium shadow-md hover:shadow-lg transition-all"
+                      style={{ backgroundColor: '#8200db' }}
+                    >
+                      + New Payrun
+                    </button>
+                    {selectedPayrun && (
+                      <button
+                        onClick={() => handleValidatePayrunClick(selectedPayrun)}
+                        className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium shadow-md hover:shadow-lg transition-all"
+                      >
+                        Validate
+                      </button>
                     )}
-                  </tbody>
-                </table>
-              </div>
+                  </div>
+                </div>
 
-              {/* Pay Period Details */}
-              {selectedPayrun && payrolls.length > 0 && (
-                <div className="mt-6">
-                  <h3 className="font-semibold text-gray-800 mb-4">Pay Period Details</h3>
+                {/* Payrun Summary Table */}
+                <div className="bg-white border-2 border-gray-200 rounded-lg overflow-hidden shadow-md">
                   <div className="overflow-x-auto">
-                    <table className="w-full border-collapse">
+                    <table className="w-full">
                       <thead>
-                        <tr className="bg-gray-50 border-b">
-                          <th className="text-left py-3 px-4 font-semibold">Pay Period</th>
-                          <th className="text-left py-3 px-4 font-semibold">Employees</th>
-                          <th className="text-right py-3 px-4 font-semibold">Employer Cost</th>
-                          <th className="text-right py-3 px-4 font-semibold">Basic Wage</th>
-                          <th className="text-right py-3 px-4 font-semibold">Gross Wage</th>
-                          <th className="text-right py-3 px-4 font-semibold">Net Wage</th>
-                          <th className="text-center py-3 px-4 font-semibold">Status</th>
-                          <th className="text-center py-3 px-4 font-semibold">Actions</th>
+                        <tr style={{ backgroundColor: '#8200db' }}>
+                          <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Payrun</th>
+                          <th className="text-right py-2 px-4 font-semibold text-white text-xs uppercase">Employer Cost</th>
+                          <th className="text-right py-2 px-4 font-semibold text-white text-xs uppercase">Gross</th>
+                          <th className="text-right py-2 px-4 font-semibold text-white text-xs uppercase">Net</th>
+                          <th className="text-center py-2 px-4 font-semibold text-white text-xs uppercase">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {payrolls.map((payroll) => {
-                          const totalEmployerCost = parseFloat(payroll.pf_employer || 0) + parseFloat(payroll.gross_salary || 0);
-                          return (
-                            <tr key={payroll.id} className="border-b hover:bg-gray-50">
-                              <td className="py-3 px-4">
-                                {months[payroll.month - 1]} {payroll.year}
-                              </td>
-                              <td className="py-3 px-4">
-                                {payroll.first_name} {payroll.last_name}
-                              </td>
-                              <td className="py-3 px-4 text-right">
-                                ₹{totalEmployerCost.toFixed(2)}
-                              </td>
-                              <td className="py-3 px-4 text-right">
-                                ₹{parseFloat(payroll.basic_salary || 0).toFixed(2)}
-                              </td>
-                              <td className="py-3 px-4 text-right">
-                                ₹{parseFloat(payroll.gross_salary || 0).toFixed(2)}
-                              </td>
-                              <td className="py-3 px-4 text-right">
-                                ₹{parseFloat(payroll.net_salary || 0).toFixed(2)}
-                              </td>
-                              <td className="py-3 px-4 text-center">
-                                <span
-                                  className={`px-2 py-1 rounded text-sm ${
-                                    payroll.is_validated
-                                      ? 'bg-green-100 text-green-800'
-                                      : 'bg-yellow-100 text-yellow-800'
-                                  }`}
-                                >
-                                  {payroll.is_validated ? 'Validated' : 'Pending'}
+                        {payruns.length === 0 ? (
+                          <tr>
+                            <td colSpan="5" className="text-center py-8 text-gray-500 text-sm">
+                              No payruns found
+                            </td>
+                          </tr>
+                        ) : (
+                          payruns.map((payrun, index) => (
+                            <tr
+                              key={payrun.payrun_id}
+                              className={`border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-all ${
+                                selectedPayrun === payrun.payrun_id ? 'bg-purple-50' : ''
+                              }`}
+                              onClick={() => fetchPayrunDetails(payrun.payrun_id)}
+                            >
+                              <td className="py-2 px-4">
+                                <span className={`font-semibold text-sm ${
+                                  selectedPayrun === payrun.payrun_id ? 'text-[#8200db]' : 'text-gray-800'
+                                }`}>
+                                  {payrun.payrun_id}
                                 </span>
                               </td>
-                              <td className="py-3 px-4 text-center">
+                              <td className="py-2 px-4 text-right text-sm text-gray-800">
+                                ₹{parseFloat(payrun.total_employer_cost || 0).toFixed(2)}
+                              </td>
+                              <td className="py-2 px-4 text-right text-sm text-gray-800">
+                                ₹{parseFloat(payrun.total_gross || 0).toFixed(2)}
+                              </td>
+                              <td className="py-2 px-4 text-right font-semibold text-sm" style={{ color: '#8200db' }}>
+                                ₹{parseFloat(payrun.total_net || 0).toFixed(2)}
+                              </td>
+                              <td className="py-2 px-4 text-center">
                                 <button
-                                  onClick={() => handleViewPayslip(payroll)}
-                                  className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    fetchPayrunDetails(payrun.payrun_id);
+                                  }}
+                                  className="px-3 py-1 rounded text-white text-xs font-medium shadow-sm hover:shadow-md transition-all"
+                                  style={{ backgroundColor: '#8200db' }}
                                 >
                                   View
                                 </button>
                               </td>
                             </tr>
-                          );
-                        })}
+                          ))
+                        )}
                       </tbody>
                     </table>
                   </div>
                 </div>
-              )}
-            </div>
-          )}
+
+                {/* Pay Period Details */}
+                {loadingPayrunDetails ? (
+                  <div className="mt-6 text-center py-12">
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 mb-3" style={{ borderColor: '#8200db' }}></div>
+                    <p className="text-gray-600 text-sm">Loading payrun details...</p>
+                  </div>
+                ) : selectedPayrun && payrolls.length > 0 && (
+                  <div className="mt-6">
+                    <div className="flex items-center mb-4 pb-2 border-b-2" style={{ borderColor: '#8200db' }}>
+                      <h3 className="text-lg font-semibold" style={{ color: '#8200db' }}>Pay Period Details</h3>
+                    </div>
+                    <div className="bg-white border-2 border-gray-200 rounded-lg overflow-hidden shadow-md">
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead>
+                            <tr style={{ backgroundColor: '#8200db' }}>
+                              <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Pay Period</th>
+                              <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Employees</th>
+                              <th className="text-right py-2 px-4 font-semibold text-white text-xs uppercase">Employer Cost</th>
+                              <th className="text-right py-2 px-4 font-semibold text-white text-xs uppercase">Basic Wage</th>
+                              <th className="text-right py-2 px-4 font-semibold text-white text-xs uppercase">Gross Wage</th>
+                              <th className="text-right py-2 px-4 font-semibold text-white text-xs uppercase">Net Wage</th>
+                              <th className="text-center py-2 px-4 font-semibold text-white text-xs uppercase">Status</th>
+                              <th className="text-center py-2 px-4 font-semibold text-white text-xs uppercase">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {payrolls.map((payroll, index) => {
+                              const totalEmployerCost = parseFloat(payroll.pf_employer || 0) + parseFloat(payroll.gross_salary || 0);
+                              return (
+                                <tr key={payroll.id} className={`border-b border-gray-100 hover:bg-gray-50 transition-all ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                                  <td className="py-2 px-4 text-sm text-gray-800">
+                                    {months[payroll.month - 1]} {payroll.year}
+                                  </td>
+                                  <td className="py-2 px-4 text-sm text-gray-800">
+                                    {payroll.first_name} {payroll.last_name}
+                                  </td>
+                                  <td className="py-2 px-4 text-right text-sm text-gray-800">
+                                    ₹{totalEmployerCost.toFixed(2)}
+                                  </td>
+                                  <td className="py-2 px-4 text-right text-sm text-gray-800">
+                                    ₹{parseFloat(payroll.basic_salary || 0).toFixed(2)}
+                                  </td>
+                                  <td className="py-2 px-4 text-right text-sm text-gray-800">
+                                    ₹{parseFloat(payroll.gross_salary || 0).toFixed(2)}
+                                  </td>
+                                  <td className="py-2 px-4 text-right font-semibold text-sm" style={{ color: '#8200db' }}>
+                                    ₹{parseFloat(payroll.net_salary || 0).toFixed(2)}
+                                  </td>
+                                  <td className="py-2 px-4 text-center">
+                                    <span
+                                      className={`px-2 py-1 rounded text-xs font-medium ${
+                                        payroll.is_validated
+                                          ? 'bg-green-100 text-green-800 border border-green-300'
+                                          : 'bg-yellow-100 text-yellow-800 border border-yellow-300'
+                                      }`}
+                                    >
+                                      {payroll.is_validated ? '✓ Validated' : 'Pending'}
+                                    </span>
+                                  </td>
+                                  <td className="py-2 px-4 text-center">
+                                    <button
+                                      onClick={() => handleViewPayslip(payroll)}
+                                      className="px-3 py-1 rounded text-white text-xs font-medium shadow-sm hover:shadow-md transition-all"
+                                      style={{ backgroundColor: '#8200db' }}
+                                    >
+                                      View
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Generate Payroll Modal */}
       {showGenerateModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md">
-            <h2 className="text-xl font-bold mb-4">Generate Payroll</h2>
-            <form onSubmit={handleGeneratePayroll} className="space-y-4">
+        <div className="fixed inset-0 bg-gray-40 bg-opacity-10 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-2xl p-6 w-full max-w-md mx-4 border-2" style={{ borderColor: '#8200db' }}>
+            <div className="mb-4 pb-3 border-b-2" style={{ borderColor: '#8200db' }}>
+              <h2 className="text-lg font-semibold" style={{ color: '#8200db' }}>Generate Payroll</h2>
+              <p className="text-xs text-gray-600 mt-0.5">Select month and year to generate payroll</p>
+            </div>
+            <form onSubmit={handleGeneratePayrollClick} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Month *</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Month *</label>
                 <select
                   value={generateData.month}
                   onChange={(e) => setGenerateData({ ...generateData, month: parseInt(e.target.value) })}
                   required
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                 >
                   {months.map((month, index) => (
                     <option key={index} value={index + 1}>
@@ -497,7 +685,7 @@ const Payroll = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Year *</label>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Year *</label>
                 <input
                   type="number"
                   value={generateData.year}
@@ -505,20 +693,21 @@ const Payroll = () => {
                   required
                   min="2000"
                   max="2100"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
                 />
               </div>
-              <div className="flex justify-end space-x-4">
+              <div className="flex justify-end space-x-2 pt-3 border-t-2 border-gray-200">
                 <button
                   type="button"
                   onClick={() => setShowGenerateModal(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg"
+                  className="px-4 py-2 border-2 border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-all font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                  className="px-4 py-2 rounded-lg text-sm text-white font-medium shadow-md hover:shadow-lg transition-all"
+                  style={{ backgroundColor: '#8200db' }}
                 >
                   Generate
                 </button>
@@ -529,143 +718,178 @@ const Payroll = () => {
       )}
 
       {/* Payslip Modal */}
-      {showPayslipModal && selectedPayroll && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-5xl max-h-[90vh] overflow-y-auto">
+      {showPayslipModal && (
+        loadingPayslip ? (
+          <div className="fixed inset-0 bg-gray-40 bg-opacity-10 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg w-full max-w-5xl p-12 shadow-xl border-2" style={{ borderColor: '#8200db' }}>
+              <div className="text-center">
+                <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 mb-4" style={{ borderColor: '#8200db' }}></div>
+                <p className="text-gray-600 font-medium">Loading payslip...</p>
+              </div>
+            </div>
+          </div>
+        ) : selectedPayroll ? (
+        <div className="fixed inset-0 bg-gray-40 bg-opacity-10 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-5xl max-h-[90vh] overflow-y-auto shadow-xl border-2" style={{ borderColor: '#8200db' }}>
             <div className="p-6">
               {/* Header */}
-              <div className="flex justify-between items-center mb-6">
+              <div className="flex justify-between items-center mb-4 pb-3 border-b-2" style={{ borderColor: '#8200db' }}>
                 <div>
-                  <h2 className="text-2xl font-bold">{selectedPayroll.first_name} {selectedPayroll.last_name}</h2>
-                  <p className="text-gray-600">
+                  <h2 className="text-xl font-semibold mb-1" style={{ color: '#8200db' }}>{selectedPayroll.first_name} {selectedPayroll.last_name}</h2>
+                  <p className="text-xs text-gray-600">
                     Payrun: {selectedPayroll.payrun_id || `Payrun ${months[selectedPayroll.month - 1]} ${selectedPayroll.year}`}
                   </p>
-                  <p className="text-gray-600">
+                  <p className="text-xs text-gray-600">
                     Period: {new Date(selectedPayroll.year, selectedPayroll.month - 1, 1).toLocaleDateString()} to{' '}
                     {new Date(selectedPayroll.year, selectedPayroll.month, 0).toLocaleDateString()}
                   </p>
                 </div>
                 <button
-                  onClick={() => setShowPayslipModal(false)}
-                  className="text-gray-500 hover:text-gray-700 text-2xl"
+                  onClick={() => {
+                    setShowPayslipModal(false);
+                    setCurrentPayrollId(null);
+                  }}
+                  className="text-gray-500 hover:text-gray-700 text-xl font-bold w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-all"
                 >
                   ✕
                 </button>
               </div>
 
               {/* Action Buttons */}
-              <div className="flex space-x-2 mb-6">
+              <div className="flex flex-wrap gap-2 mb-4 pb-3 border-b-2 border-gray-200">
                 <button
                   onClick={handleNewPayslip}
-                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded text-xs font-medium shadow-sm hover:shadow-md transition-all"
                 >
                   New Payslip
                 </button>
                 <button
                   onClick={handleCompute}
-                  className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700"
+                  disabled={computing}
+                  className="px-3 py-1.5 rounded text-xs text-white font-medium shadow-sm hover:shadow-md transition-all disabled:opacity-50"
+                  style={{ backgroundColor: '#8200db' }}
                 >
-                  Compute
+                  {computing ? 'Computing...' : 'Compute'}
                 </button>
                 <button
                   onClick={handleValidate}
-                  className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
+                  disabled={selectedPayroll?.is_validated || validating}
+                  className={`px-3 py-1.5 rounded text-xs font-medium shadow-sm transition-all ${
+                    selectedPayroll?.is_validated
+                      ? 'bg-gray-400 text-white cursor-not-allowed'
+                      : validating
+                      ? 'bg-green-400 text-white cursor-wait'
+                      : 'bg-green-600 text-white hover:bg-green-700 hover:shadow-md'
+                  }`}
                 >
-                  Validate
+                  {validating ? 'Validating...' : selectedPayroll?.is_validated ? '✓ Validated' : 'Validate'}
                 </button>
                 <button
-                  onClick={() => setShowPayslipModal(false)}
-                  className="bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700"
+                  onClick={() => {
+                    setShowPayslipModal(false);
+                    setCurrentPayrollId(null);
+                  }}
+                  className="px-3 py-1.5 bg-gray-600 text-white rounded text-xs font-medium shadow-sm hover:shadow-md transition-all"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={() => window.print()}
-                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700"
+                  className="px-3 py-1.5 bg-indigo-600 text-white rounded text-xs font-medium shadow-sm hover:shadow-md transition-all"
                 >
                   Print
                 </button>
               </div>
 
               {/* Tabs */}
-              <div className="border-b mb-6">
+              <div className="border-b-2 border-gray-200 mb-4">
                 <div className="flex">
                   <button
                     onClick={() => setPayslipTab('workedDays')}
-                    className={`px-6 py-3 font-medium ${
+                    className={`px-6 py-2.5 font-medium text-sm transition-all relative ${
                       payslipTab === 'workedDays'
-                        ? 'border-b-2 border-purple-600 text-purple-600'
+                        ? 'text-white'
                         : 'text-gray-600 hover:text-gray-800'
                     }`}
+                    style={payslipTab === 'workedDays' ? { backgroundColor: '#8200db' } : {}}
                   >
                     Worked Days
+                    {payslipTab === 'workedDays' && (
+                      <div className="absolute bottom-0 left-0 right-0 h-1 bg-white"></div>
+                    )}
                   </button>
                   <button
                     onClick={() => setPayslipTab('salaryComputation')}
-                    className={`px-6 py-3 font-medium ${
+                    className={`px-6 py-2.5 font-medium text-sm transition-all relative ${
                       payslipTab === 'salaryComputation'
-                        ? 'border-b-2 border-purple-600 text-purple-600'
+                        ? 'text-white'
                         : 'text-gray-600 hover:text-gray-800'
                     }`}
+                    style={payslipTab === 'salaryComputation' ? { backgroundColor: '#8200db' } : {}}
                   >
                     Salary Computation
+                    {payslipTab === 'salaryComputation' && (
+                      <div className="absolute bottom-0 left-0 right-0 h-1 bg-white"></div>
+                    )}
                   </button>
                 </div>
               </div>
 
               {/* Worked Days Tab */}
               {payslipTab === 'workedDays' && workedDays && (
-                <div>
-                  <table className="w-full border-collapse">
+                <div className="bg-white border-2 border-gray-200 rounded-lg overflow-hidden shadow-md">
+                  <table className="w-full">
                     <thead>
-                      <tr className="bg-gray-50 border-b">
-                        <th className="text-left py-3 px-4 font-semibold">Type</th>
-                        <th className="text-right py-3 px-4 font-semibold">Days</th>
-                        <th className="text-right py-3 px-4 font-semibold">Amount</th>
+                      <tr style={{ backgroundColor: '#8200db' }}>
+                        <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Type</th>
+                        <th className="text-right py-2 px-4 font-semibold text-white text-xs uppercase">Days</th>
+                        <th className="text-right py-2 px-4 font-semibold text-white text-xs uppercase">Amount</th>
                       </tr>
                     </thead>
                     <tbody>
-                      <tr className="border-b">
-                        <td className="py-3 px-4">Attendance</td>
-                        <td className="py-3 px-4 text-right">
+                      <tr className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="py-2 px-4 text-sm text-gray-800">Attendance</td>
+                        <td className="py-2 px-4 text-right text-xs text-gray-700">
                           {parseFloat(workedDays.attendance_days || 0).toFixed(2)} ({workedDays.working_days_per_week} working days in week)
                         </td>
-                        <td className="py-3 px-4 text-right">
+                        <td className="py-2 px-4 text-right text-sm text-gray-800">
                           ₹{parseFloat(workedDays.attendance_amount || 0).toFixed(2)}
                         </td>
                       </tr>
-                      <tr className="border-b">
-                        <td className="py-3 px-4">Paid Time off</td>
-                        <td className="py-3 px-4 text-right">
+                      <tr className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="py-2 px-4 text-sm text-gray-800">Paid Time off</td>
+                        <td className="py-2 px-4 text-right text-xs text-gray-700">
                           {parseFloat(workedDays.paid_time_off_days || 0).toFixed(2)} ({parseFloat(workedDays.paid_time_off_days || 0).toFixed(0)} Paid leaves/Month)
                         </td>
-                        <td className="py-3 px-4 text-right">
+                        <td className="py-2 px-4 text-right text-sm text-gray-800">
                           ₹{parseFloat(workedDays.paid_time_off_amount || 0).toFixed(2)}
                         </td>
                       </tr>
-                      <tr className="border-b">
-                        <td className="py-3 px-4">Unpaid Time off</td>
-                        <td className="py-3 px-4 text-right">
+                      <tr className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="py-2 px-4 text-sm text-gray-800">Unpaid Time off</td>
+                        <td className="py-2 px-4 text-right text-xs text-gray-700">
                           {parseFloat(workedDays.unpaid_time_off_days || 0).toFixed(2)} ({parseFloat(workedDays.unpaid_time_off_days || 0).toFixed(0)} Unpaid leaves)
                         </td>
-                        <td className="py-3 px-4 text-right text-red-600">
+                        <td className="py-2 px-4 text-right text-sm text-red-600">
                           -₹{parseFloat(workedDays.unpaid_time_off_amount || 0).toFixed(2)}
                         </td>
                       </tr>
-                      <tr className="bg-gray-50 font-semibold">
-                        <td className="py-3 px-4">Total Payable Days</td>
-                        <td className="py-3 px-4 text-right">
+                      <tr className="bg-gray-100 font-semibold border-t-2" style={{ borderColor: '#8200db' }}>
+                        <td className="py-2 px-4 text-sm" style={{ color: '#8200db' }}>Total Payable Days</td>
+                        <td className="py-2 px-4 text-right text-sm" style={{ color: '#8200db' }}>
                           {parseFloat(workedDays.total_payable_days || 0).toFixed(2)}
                         </td>
-                        <td className="py-3 px-4 text-right">
+                        <td className="py-2 px-4 text-right text-sm" style={{ color: '#8200db' }}>
                           ₹{parseFloat(workedDays.total_payable_amount || 0).toFixed(2)}
                         </td>
                       </tr>
                     </tbody>
                   </table>
-                  <p className="text-sm text-gray-600 mt-4">
-                    Salary is calculated based on the employee's monthly attendance. Paid leaves are included in the total payable days, while unpaid leaves are deducted from the salary.
-                  </p>
+                  <div className="p-4 bg-gray-50 border-t-2 border-gray-200">
+                    <p className="text-xs text-gray-600">
+                      Salary is calculated based on the employee's monthly attendance. Paid leaves are included in the total payable days, while unpaid leaves are deducted from the salary.
+                    </p>
+                  </div>
                 </div>
               )}
 
@@ -721,122 +945,126 @@ const Payroll = () => {
                       <>
                         {/* Gross Earnings Section */}
                         <div className="mb-6">
-                          <div className="flex items-center justify-between mb-4">
-                            <h3 className="font-semibold text-lg">Gross Earnings</h3>
-                            <span className="text-sm text-gray-500">Gross</span>
+                          <div className="flex items-center justify-between mb-4 pb-2 border-b-2" style={{ borderColor: '#8200db' }}>
+                            <h3 className="text-base font-semibold" style={{ color: '#8200db' }}>Gross Earnings</h3>
+                            <span className="text-xs font-medium text-gray-600">Gross</span>
                           </div>
-                          <table className="w-full border-collapse">
-                            <thead>
-                              <tr className="bg-gray-50 border-b">
-                                <th className="text-left py-3 px-4 font-semibold">Rule Name</th>
-                                <th className="text-right py-3 px-4 font-semibold">Rate %</th>
-                                <th className="text-right py-3 px-4 font-semibold">Amount</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              <tr className="border-b">
-                                <td className="py-3 px-4">Basic Salary</td>
-                                <td className="py-3 px-4 text-right">{calculateEarningRate(selectedPayroll.basic_salary)}%</td>
-                                <td className="py-3 px-4 text-right">
-                                  ₹{parseFloat(selectedPayroll.basic_salary || 0).toFixed(2)}
-                                </td>
-                              </tr>
-                              <tr className="border-b">
-                                <td className="py-3 px-4">House Rent Allowance</td>
-                                <td className="py-3 px-4 text-right">{calculateEarningRate(selectedPayroll.hra)}%</td>
-                                <td className="py-3 px-4 text-right">
-                                  ₹{parseFloat(selectedPayroll.hra || 0).toFixed(2)}
-                                </td>
-                              </tr>
-                              <tr className="border-b">
-                                <td className="py-3 px-4">Standard Allowance</td>
-                                <td className="py-3 px-4 text-right">{calculateEarningRate(selectedPayroll.standard_allowance)}%</td>
-                                <td className="py-3 px-4 text-right">
-                                  ₹{parseFloat(selectedPayroll.standard_allowance || 0).toFixed(2)}
-                                </td>
-                              </tr>
-                              <tr className="border-b">
-                                <td className="py-3 px-4">Performance Bonus</td>
-                                <td className="py-3 px-4 text-right">{calculateEarningRate(selectedPayroll.performance_bonus)}%</td>
-                                <td className="py-3 px-4 text-right">
-                                  ₹{parseFloat(selectedPayroll.performance_bonus || 0).toFixed(2)}
-                                </td>
-                              </tr>
-                              <tr className="border-b">
-                                <td className="py-3 px-4">Leave Travel Allowance</td>
-                                <td className="py-3 px-4 text-right">{calculateEarningRate(selectedPayroll.leave_travel_allowance)}%</td>
-                                <td className="py-3 px-4 text-right">
-                                  ₹{parseFloat(selectedPayroll.leave_travel_allowance || 0).toFixed(2)}
-                                </td>
-                              </tr>
-                              <tr className="border-b">
-                                <td className="py-3 px-4">Fixed Allowance</td>
-                                <td className="py-3 px-4 text-right">{calculateEarningRate(selectedPayroll.other_allowances)}%</td>
-                                <td className="py-3 px-4 text-right">
-                                  ₹{parseFloat(selectedPayroll.other_allowances || 0).toFixed(2)}
-                                </td>
-                              </tr>
-                              <tr className="bg-gray-50 font-semibold border-t-2 border-gray-300">
-                                <td className="py-3 px-4">Gross (Total)</td>
-                                <td className="py-3 px-4 text-right">100.00%</td>
-                                <td className="py-3 px-4 text-right">
-                                  ₹{grossSalary.toFixed(2)}
-                                </td>
-                              </tr>
-                            </tbody>
-                          </table>
+                          <div className="bg-white border-2 border-gray-200 rounded-lg overflow-hidden shadow-md">
+                            <table className="w-full">
+                              <thead>
+                                <tr style={{ backgroundColor: '#8200db' }}>
+                                  <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Rule Name</th>
+                                  <th className="text-right py-2 px-4 font-semibold text-white text-xs uppercase">Rate %</th>
+                                  <th className="text-right py-2 px-4 font-semibold text-white text-xs uppercase">Amount</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <tr className="border-b border-gray-100 hover:bg-gray-50">
+                                  <td className="py-2 px-4 text-sm text-gray-800">Basic Salary</td>
+                                  <td className="py-2 px-4 text-right text-xs text-gray-700">{calculateEarningRate(selectedPayroll.basic_salary)}%</td>
+                                  <td className="py-2 px-4 text-right text-sm text-gray-800">
+                                    ₹{parseFloat(selectedPayroll.basic_salary || 0).toFixed(2)}
+                                  </td>
+                                </tr>
+                                <tr className="border-b border-gray-100 hover:bg-gray-50">
+                                  <td className="py-2 px-4 text-sm text-gray-800">House Rent Allowance</td>
+                                  <td className="py-2 px-4 text-right text-xs text-gray-700">{calculateEarningRate(selectedPayroll.hra)}%</td>
+                                  <td className="py-2 px-4 text-right text-sm text-gray-800">
+                                    ₹{parseFloat(selectedPayroll.hra || 0).toFixed(2)}
+                                  </td>
+                                </tr>
+                                <tr className="border-b border-gray-100 hover:bg-gray-50">
+                                  <td className="py-2 px-4 text-sm text-gray-800">Standard Allowance</td>
+                                  <td className="py-2 px-4 text-right text-xs text-gray-700">{calculateEarningRate(selectedPayroll.standard_allowance)}%</td>
+                                  <td className="py-2 px-4 text-right text-sm text-gray-800">
+                                    ₹{parseFloat(selectedPayroll.standard_allowance || 0).toFixed(2)}
+                                  </td>
+                                </tr>
+                                <tr className="border-b border-gray-100 hover:bg-gray-50">
+                                  <td className="py-2 px-4 text-sm text-gray-800">Performance Bonus</td>
+                                  <td className="py-2 px-4 text-right text-xs text-gray-700">{calculateEarningRate(selectedPayroll.performance_bonus)}%</td>
+                                  <td className="py-2 px-4 text-right text-sm text-gray-800">
+                                    ₹{parseFloat(selectedPayroll.performance_bonus || 0).toFixed(2)}
+                                  </td>
+                                </tr>
+                                <tr className="border-b border-gray-100 hover:bg-gray-50">
+                                  <td className="py-2 px-4 text-sm text-gray-800">Leave Travel Allowance</td>
+                                  <td className="py-2 px-4 text-right text-xs text-gray-700">{calculateEarningRate(selectedPayroll.leave_travel_allowance)}%</td>
+                                  <td className="py-2 px-4 text-right text-sm text-gray-800">
+                                    ₹{parseFloat(selectedPayroll.leave_travel_allowance || 0).toFixed(2)}
+                                  </td>
+                                </tr>
+                                <tr className="border-b border-gray-100 hover:bg-gray-50">
+                                  <td className="py-2 px-4 text-sm text-gray-800">Fixed Allowance</td>
+                                  <td className="py-2 px-4 text-right text-xs text-gray-700">{calculateEarningRate(selectedPayroll.other_allowances)}%</td>
+                                  <td className="py-2 px-4 text-right text-sm text-gray-800">
+                                    ₹{parseFloat(selectedPayroll.other_allowances || 0).toFixed(2)}
+                                  </td>
+                                </tr>
+                                <tr className="bg-gray-100 font-semibold border-t-2" style={{ borderColor: '#8200db' }}>
+                                  <td className="py-2 px-4 text-sm" style={{ color: '#8200db' }}>Gross (Total)</td>
+                                  <td className="py-2 px-4 text-right text-sm" style={{ color: '#8200db' }}>100.00%</td>
+                                  <td className="py-2 px-4 text-right text-sm" style={{ color: '#8200db' }}>
+                                    ₹{grossSalary.toFixed(2)}
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
                         </div>
 
                         {/* Deductions Section */}
                         <div className="mb-6">
-                          <div className="flex items-center justify-between mb-4">
-                            <h3 className="font-semibold text-lg">Deductions</h3>
-                            <span className="text-sm text-gray-500">Deductions</span>
+                          <div className="flex items-center justify-between mb-4 pb-2 border-b-2" style={{ borderColor: '#8200db' }}>
+                            <h3 className="text-base font-semibold" style={{ color: '#8200db' }}>Deductions</h3>
+                            <span className="text-xs font-medium text-gray-600">Deductions</span>
                           </div>
-                          <table className="w-full border-collapse">
-                            <thead>
-                              <tr className="bg-gray-50 border-b">
-                                <th className="text-left py-3 px-4 font-semibold">Rule Name</th>
-                                <th className="text-right py-3 px-4 font-semibold">Rate %</th>
-                                <th className="text-right py-3 px-4 font-semibold">Amount</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              <tr className="border-b">
-                                <td className="py-3 px-4">PF Employee</td>
-                                <td className="py-3 px-4 text-right">{calculateDeductionRate(selectedPayroll.pf_employee, true)}%</td>
-                                <td className="py-3 px-4 text-right text-red-600">
-                                  -₹{parseFloat(selectedPayroll.pf_employee || 0).toFixed(2)}
-                                </td>
-                              </tr>
-                              <tr className="border-b">
-                                <td className="py-3 px-4">PF Employer</td>
-                                <td className="py-3 px-4 text-right">{calculateDeductionRate(selectedPayroll.pf_employer, true)}%</td>
-                                <td className="py-3 px-4 text-right text-red-600">
-                                  -₹{parseFloat(selectedPayroll.pf_employer || 0).toFixed(2)}
-                                </td>
-                              </tr>
-                              <tr className="border-b">
-                                <td className="py-3 px-4">Professional Tax</td>
-                                <td className="py-3 px-4 text-right">{calculateDeductionRate(selectedPayroll.professional_tax)}%</td>
-                                <td className="py-3 px-4 text-right text-red-600">
-                                  -₹{parseFloat(selectedPayroll.professional_tax || 0).toFixed(2)}
-                                </td>
-                              </tr>
-                            </tbody>
-                          </table>
+                          <div className="bg-white border-2 border-gray-200 rounded-lg overflow-hidden shadow-md">
+                            <table className="w-full">
+                              <thead>
+                                <tr style={{ backgroundColor: '#8200db' }}>
+                                  <th className="text-left py-2 px-4 font-semibold text-white text-xs uppercase">Rule Name</th>
+                                  <th className="text-right py-2 px-4 font-semibold text-white text-xs uppercase">Rate %</th>
+                                  <th className="text-right py-2 px-4 font-semibold text-white text-xs uppercase">Amount</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                <tr className="border-b border-gray-100 hover:bg-gray-50">
+                                  <td className="py-2 px-4 text-sm text-gray-800">PF Employee</td>
+                                  <td className="py-2 px-4 text-right text-xs text-gray-700">{calculateDeductionRate(selectedPayroll.pf_employee, true)}%</td>
+                                  <td className="py-2 px-4 text-right text-sm text-red-600">
+                                    -₹{parseFloat(selectedPayroll.pf_employee || 0).toFixed(2)}
+                                  </td>
+                                </tr>
+                                <tr className="border-b border-gray-100 hover:bg-gray-50">
+                                  <td className="py-2 px-4 text-sm text-gray-800">PF Employer</td>
+                                  <td className="py-2 px-4 text-right text-xs text-gray-700">{calculateDeductionRate(selectedPayroll.pf_employer, true)}%</td>
+                                  <td className="py-2 px-4 text-right text-sm text-red-600">
+                                    -₹{parseFloat(selectedPayroll.pf_employer || 0).toFixed(2)}
+                                  </td>
+                                </tr>
+                                <tr className="border-b border-gray-100 hover:bg-gray-50">
+                                  <td className="py-2 px-4 text-sm text-gray-800">Professional Tax</td>
+                                  <td className="py-2 px-4 text-right text-xs text-gray-700">{calculateDeductionRate(selectedPayroll.professional_tax)}%</td>
+                                  <td className="py-2 px-4 text-right text-sm text-red-600">
+                                    -₹{parseFloat(selectedPayroll.professional_tax || 0).toFixed(2)}
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
                         </div>
 
                         {/* Net Amount */}
-                        <div className="mt-6 pt-4 border-t-2 border-gray-300">
+                        <div className="mt-6 pt-4 border-t-2 rounded-lg bg-gradient-to-r from-gray-50 to-white p-4" style={{ borderColor: '#8200db' }}>
                           <table className="w-full">
                             <tbody>
-                              <tr className="font-semibold text-lg">
-                                <td className="py-3 px-4">Net Amount</td>
-                                <td className="py-3 px-4 text-right">
+                              <tr className="font-semibold text-base">
+                                <td className="py-2 px-4" style={{ color: '#8200db' }}>Net Amount</td>
+                                <td className="py-2 px-4 text-right" style={{ color: '#8200db' }}>
                                   {grossSalary > 0 ? ((parseFloat(selectedPayroll.net_salary || 0) / grossSalary) * 100).toFixed(2) : '0.00'}%
                                 </td>
-                                <td className="py-3 px-4 text-right">
+                                <td className="py-2 px-4 text-right text-base" style={{ color: '#8200db' }}>
                                   ₹{parseFloat(selectedPayroll.net_salary || 0).toFixed(2)}
                                 </td>
                               </tr>
@@ -851,15 +1079,16 @@ const Payroll = () => {
             </div>
           </div>
         </div>
+        ) : null
       )}
 
       {/* Warning Employees Modal */}
       {showWarningModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold">
+        <div className="fixed inset-0 bg-gray-40 bg-opacity-10 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl border-2" style={{ borderColor: '#8200db' }}>
+            <div className="p-8">
+              <div className="flex justify-between items-center mb-6 pb-4 border-b-2" style={{ borderColor: '#8200db' }}>
+                <h2 className="text-2xl font-bold" style={{ color: '#8200db' }}>
                   {warningType === 'no_bank_account' 
                     ? 'Employees without Bank Account' 
                     : 'Employees without Manager'}
@@ -870,84 +1099,92 @@ const Payroll = () => {
                     setWarningEmployees([]);
                     setWarningType(null);
                   }}
-                  className="text-gray-500 hover:text-gray-700 text-2xl"
+                  className="text-gray-500 hover:text-gray-700 text-3xl font-bold w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 transition-all"
                 >
                   ✕
                 </button>
               </div>
 
               {loadingWarning ? (
-                <div className="text-center py-8">Loading...</div>
+                <div className="text-center py-12">
+                  <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-4 border-b-4" style={{ borderColor: '#8200db' }}></div>
+                  <p className="mt-4 text-gray-600 font-medium">Loading...</p>
+                </div>
               ) : warningEmployees.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">No employees found</div>
+                <div className="text-center py-12">
+                  <p className="text-gray-500 text-lg font-medium">No employees found</p>
+                </div>
               ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full border-collapse">
-                    <thead>
-                      <tr className="bg-gray-50 border-b">
-                        <th className="text-left py-3 px-4 font-semibold">Employee ID</th>
-                        <th className="text-left py-3 px-4 font-semibold">Name</th>
-                        <th className="text-left py-3 px-4 font-semibold">Department</th>
-                        <th className="text-left py-3 px-4 font-semibold">Position</th>
-                        {warningType === 'no_bank_account' && (
-                          <>
-                            <th className="text-left py-3 px-4 font-semibold">Manager</th>
-                            <th className="text-left py-3 px-4 font-semibold">Manager Bank Status</th>
-                          </>
-                        )}
-                        <th className="text-center py-3 px-4 font-semibold">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {warningEmployees.map((employee) => (
-                        <tr key={employee.id} className="border-b hover:bg-gray-50">
-                          <td className="py-3 px-4">{employee.employee_id}</td>
-                          <td className="py-3 px-4">
-                            {employee.first_name} {employee.last_name}
-                          </td>
-                          <td className="py-3 px-4">{employee.department || 'N/A'}</td>
-                          <td className="py-3 px-4">{employee.position || 'N/A'}</td>
+                <div className="bg-white border-2 border-gray-200 rounded-xl overflow-hidden shadow-lg">
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr style={{ backgroundColor: '#8200db' }}>
+                          <th className="text-left py-4 px-6 font-bold text-white text-sm uppercase tracking-wider">Employee ID</th>
+                          <th className="text-left py-4 px-6 font-bold text-white text-sm uppercase tracking-wider">Name</th>
+                          <th className="text-left py-4 px-6 font-bold text-white text-sm uppercase tracking-wider">Department</th>
+                          <th className="text-left py-4 px-6 font-bold text-white text-sm uppercase tracking-wider">Position</th>
                           {warningType === 'no_bank_account' && (
                             <>
-                              <td className="py-3 px-4">
-                                {employee.manager_first_name && employee.manager_last_name ? (
-                                  <span>
-                                    {employee.manager_first_name} {employee.manager_last_name}
-                                    {employee.manager_employee_id && (
-                                      <span className="text-gray-500 text-sm ml-1">
-                                        ({employee.manager_employee_id})
-                                      </span>
-                                    )}
-                                  </span>
-                                ) : (
-                                  <span className="text-gray-400">No Manager</span>
-                                )}
-                              </td>
-                              <td className="py-3 px-4">
-                                {employee.manager_id ? (
-                                  employee.manager_has_bank_account ? (
-                                    <span className="text-green-600 font-semibold">✓ Has Bank Account</span>
-                                  ) : (
-                                    <span className="text-red-600 font-semibold">✗ No Bank Account</span>
-                                  )
-                                ) : (
-                                  <span className="text-gray-400">N/A</span>
-                                )}
-                              </td>
+                              <th className="text-left py-4 px-6 font-bold text-white text-sm uppercase tracking-wider">Manager</th>
+                              <th className="text-left py-4 px-6 font-bold text-white text-sm uppercase tracking-wider">Manager Bank Status</th>
                             </>
                           )}
-                          <td className="py-3 px-4 text-center">
-                            <button
-                              onClick={() => handleEmployeeClick(employee.id)}
-                              className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
-                            >
-                              View Profile
-                            </button>
-                          </td>
+                          <th className="text-center py-4 px-6 font-bold text-white text-sm uppercase tracking-wider">Actions</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {warningEmployees.map((employee, index) => (
+                          <tr key={employee.id} className={`border-b-2 border-gray-100 hover:bg-gray-50 transition-all ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                            <td className="py-4 px-6 font-semibold text-gray-800">{employee.employee_id}</td>
+                            <td className="py-4 px-6 font-semibold text-gray-800">
+                              {employee.first_name} {employee.last_name}
+                            </td>
+                            <td className="py-4 px-6 text-gray-700">{employee.department || 'N/A'}</td>
+                            <td className="py-4 px-6 text-gray-700">{employee.position || 'N/A'}</td>
+                            {warningType === 'no_bank_account' && (
+                              <>
+                                <td className="py-4 px-6 text-gray-700">
+                                  {employee.manager_first_name && employee.manager_last_name ? (
+                                    <span>
+                                      {employee.manager_first_name} {employee.manager_last_name}
+                                      {employee.manager_employee_id && (
+                                        <span className="text-gray-500 text-sm ml-1">
+                                          ({employee.manager_employee_id})
+                                        </span>
+                                      )}
+                                    </span>
+                                  ) : (
+                                    <span className="text-gray-400">No Manager</span>
+                                  )}
+                                </td>
+                                <td className="py-4 px-6">
+                                  {employee.manager_id ? (
+                                    employee.manager_has_bank_account ? (
+                                      <span className="text-green-600 font-semibold">✓ Has Bank Account</span>
+                                    ) : (
+                                      <span className="text-red-600 font-semibold">✗ No Bank Account</span>
+                                    )
+                                  ) : (
+                                    <span className="text-gray-400">N/A</span>
+                                  )}
+                                </td>
+                              </>
+                            )}
+                            <td className="py-4 px-6 text-center">
+                              <button
+                                onClick={() => handleEmployeeClick(employee.id)}
+                                className="px-4 py-2 rounded-lg text-white font-semibold shadow-md hover:shadow-lg transition-all"
+                                style={{ backgroundColor: '#8200db' }}
+                              >
+                                View Profile
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>
