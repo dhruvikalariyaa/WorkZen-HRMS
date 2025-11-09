@@ -187,9 +187,9 @@ router.get('/summary', authenticate, authorize('Employee', 'HR Officer', 'Payrol
         for (let i = 0; i < daysDiff; i++) {
           const d = new Date(actualStart);
           d.setDate(d.getDate() + i);
-          // Use date string as key to avoid duplicates
-          const dateStr = d.toISOString().split('T')[0];
-          leaveDatesSet.add(dateStr);
+            // Use date string as key to avoid duplicates
+            const dateStr = d.toISOString().split('T')[0];
+            leaveDatesSet.add(dateStr);
         }
       }
     });

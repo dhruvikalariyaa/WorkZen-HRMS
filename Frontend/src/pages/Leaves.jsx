@@ -269,147 +269,147 @@ const Leaves = () => {
           {/* Header */}
           <div className="p-6 border-b-2 border-gray-200">
             <div className="flex justify-between items-center">
-              <div>
+    <div>
                 <h1 className="text-lg font-semibold" style={{ color: '#8200db' }}>
-                  {isEmployee || (isHRorPayroll && viewMode === 'my') ? 'My Time Off' : 'Time Off Management'}
-                </h1>
-               </div>
-              <div className="flex items-center gap-3">
-                {isHRorPayroll && (
-                  <div className="relative">
-                    <button
-                      onClick={() => setShowViewModeDropdown(!showViewModeDropdown)}
+            {isEmployee || (isHRorPayroll && viewMode === 'my') ? 'My Time Off' : 'Time Off Management'}
+          </h1>
+        </div>
+        <div className="flex items-center gap-3">
+          {isHRorPayroll && (
+            <div className="relative">
+              <button
+                onClick={() => setShowViewModeDropdown(!showViewModeDropdown)}
                       className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 font-medium transition-colors flex items-center gap-2 text-sm"
-                    >
-                      {viewMode === 'all' ? 'All Time Off' : 'My Time Off'}
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                      </svg>
-                    </button>
-                    {showViewModeDropdown && (
-                      <>
-                        <div 
-                          className="fixed inset-0 z-10" 
-                          onClick={() => setShowViewModeDropdown(false)}
-                        ></div>
+              >
+                {viewMode === 'all' ? 'All Time Off' : 'My Time Off'}
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {showViewModeDropdown && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-10" 
+                    onClick={() => setShowViewModeDropdown(false)}
+                  ></div>
                         <div className="absolute top-full right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border-2 border-gray-200 z-20">
-                          <button
-                            onClick={() => {
-                              setViewMode('all');
-                              setSearchTerm('');
-                              setShowViewModeDropdown(false);
-                            }}
-                            className={`w-full text-left px-4 py-3 rounded-t-lg transition-colors ${
-                              viewMode === 'all'
+                    <button
+                      onClick={() => {
+                        setViewMode('all');
+                        setSearchTerm('');
+                        setShowViewModeDropdown(false);
+                      }}
+                      className={`w-full text-left px-4 py-3 rounded-t-lg transition-colors ${
+                        viewMode === 'all'
                                 ? 'bg-purple-50 font-medium'
-                                : 'text-gray-700 hover:bg-gray-50'
-                            }`}
+                          : 'text-gray-700 hover:bg-gray-50'
+                      }`}
                             style={viewMode === 'all' ? { color: '#8200db' } : {}}
-                          >
-                            All Time Off
-                          </button>
-                          <button
-                            onClick={() => {
-                              setViewMode('my');
-                              setSearchTerm('');
-                              setShowViewModeDropdown(false);
-                            }}
-                            className={`w-full text-left px-4 py-3 rounded-b-lg transition-colors ${
-                              viewMode === 'my'
+                    >
+                      All Time Off
+                    </button>
+                    <button
+                      onClick={() => {
+                        setViewMode('my');
+                        setSearchTerm('');
+                        setShowViewModeDropdown(false);
+                      }}
+                      className={`w-full text-left px-4 py-3 rounded-b-lg transition-colors ${
+                        viewMode === 'my'
                                 ? 'bg-purple-50 font-medium'
-                                : 'text-gray-700 hover:bg-gray-50'
-                            }`}
+                          : 'text-gray-700 hover:bg-gray-50'
+                      }`}
                             style={viewMode === 'my' ? { color: '#8200db' } : {}}
-                          >
-                            My Time Off
-                          </button>
-                        </div>
-                      </>
-                    )}
+                    >
+                      My Time Off
+                    </button>
                   </div>
-                )}
+                </>
+              )}
+            </div>
+          )}
                 {canApplyLeave && (isEmployee || viewMode === 'my' || user?.role === 'Admin') && (
-                  <button
-                    onClick={() => setShowApplyLeave(true)}
+            <button
+              onClick={() => setShowApplyLeave(true)}
                     className="px-4 py-2 rounded-lg text-sm text-white transition-all font-medium shadow-md hover:shadow-lg"
                     style={{ backgroundColor: '#8200db' }}
-                  >
-                    NEW
-                  </button>
-                )}
+            >
+              NEW
+            </button>
+          )}
               </div>
-            </div>
-          </div>
+        </div>
+      </div>
 
           <div className="p-8">
 
-            {/* Leave Type Tabs */}
+      {/* Leave Type Tabs */}
             <div className="mb-6">
               <div className="bg-white rounded-lg border-2 border-gray-200 overflow-hidden">
                 <div className="border-b-2 border-gray-200">
                   <div className="flex">
-                    <button
-                      onClick={() => setSelectedLeaveType('')}
+            <button
+              onClick={() => setSelectedLeaveType('')}
                       className={`px-6 py-3 font-medium text-sm transition-all relative ${
-                        selectedLeaveType === ''
+                selectedLeaveType === ''
                           ? 'text-white'
-                          : 'text-gray-600 hover:text-gray-800'
-                      }`}
+                  : 'text-gray-600 hover:text-gray-800'
+              }`}
                       style={selectedLeaveType === '' ? { backgroundColor: '#8200db' } : {}}
-                    >
-                      All Types
+            >
+              All Types
                       {selectedLeaveType === '' && (
                         <div className="absolute bottom-0 left-0 right-0 h-1 bg-white"></div>
                       )}
-                    </button>
-                    {leaveTypes.map((type) => (
-                      <button
-                        key={type.id}
-                        onClick={() => setSelectedLeaveType(type.name)}
+            </button>
+            {leaveTypes.map((type) => (
+              <button
+                key={type.id}
+                onClick={() => setSelectedLeaveType(type.name)}
                         className={`px-6 py-3 font-medium text-sm transition-all relative ${
-                          selectedLeaveType === type.name
+                  selectedLeaveType === type.name
                             ? 'text-white'
-                            : 'text-gray-600 hover:text-gray-800'
-                        }`}
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
                         style={selectedLeaveType === type.name ? { backgroundColor: '#8200db' } : {}}
-                      >
-                        {type.name}
-                        {availableDays[type.name] !== undefined && (
+              >
+                {type.name}
+                {availableDays[type.name] !== undefined && (
                           <span className="ml-2 text-xs font-normal">
-                            ({availableDays[type.name].toFixed(2)} Days Available)
-                          </span>
-                        )}
+                    ({availableDays[type.name].toFixed(2)} Days Available)
+                  </span>
+                )}
                         {selectedLeaveType === type.name && (
                           <div className="absolute bottom-0 left-0 right-0 h-1 bg-white"></div>
                         )}
-                      </button>
-                    ))}
+              </button>
+            ))}
                   </div>
-                </div>
-              </div>
-            </div>
+          </div>
+        </div>
+      </div>
 
-            {/* Search and Filter */}
+      {/* Search and Filter */}
             <div className="mb-6">
               <div className="bg-white rounded-lg border-2 border-gray-200 p-4">
-                <div className="flex space-x-4">
-                  <input
-                    type="text"
+        <div className="flex space-x-4">
+            <input
+              type="text"
                     placeholder={isEmployee || (isHRorPayroll && viewMode === 'my') ? "Search by leave type or reason..." : "Search by name or employee ID..."}
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
                     className="flex-1 px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
-                  />
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
+            />
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
                     className="px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:border-[#8200db] focus:ring-1 focus:ring-[#8200db] focus:ring-opacity-20 transition-all"
-                  >
-                    <option value="">All Status</option>
-                    <option value="Pending">Pending</option>
-                    <option value="Approved">Approved</option>
-                    <option value="Rejected">Rejected</option>
-                  </select>
+          >
+            <option value="">All Status</option>
+            <option value="Pending">Pending</option>
+            <option value="Approved">Approved</option>
+            <option value="Rejected">Rejected</option>
+          </select>
                 </div>
               </div>
             </div>
@@ -661,12 +661,12 @@ const Leaves = () => {
                     ))}
                   </select>
                 ) : (
-                  <input
-                    type="text"
-                    value={`${user?.employee?.first_name || ''} ${user?.employee?.last_name || ''}`.trim() || user?.loginId || 'Employee'}
-                    disabled
+                <input
+                  type="text"
+                  value={`${user?.employee?.first_name || ''} ${user?.employee?.last_name || ''}`.trim() || user?.loginId || 'Employee'}
+                  disabled
                     className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg bg-gray-50"
-                  />
+                />
                 )}
               </div>
               <div>

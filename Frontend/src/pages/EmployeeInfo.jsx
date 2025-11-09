@@ -4,11 +4,138 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 
+// Helper function to format date for HTML date input (YYYY-MM-DD)
+const formatDateForInput = (date) => {
+  if (!date) return '';
+  if (typeof date === 'string') {
+    // If it's an ISO string, extract just the date part
+    if (date.includes('T')) {
+      return date.split('T')[0];
+    }
+    // If it's already in YYYY-MM-DD format, return as is
+    if (date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      return date;
+    }
+  }
+  // If it's a Date object, format it
+  if (date instanceof Date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  return '';
+};
+
+// Helper function to format date for display (MM/DD/YYYY)
+const formatDateForDisplay = (date) => {
+  if (!date) return '';
+  try {
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    if (isNaN(dateObj.getTime())) return '';
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    const year = dateObj.getFullYear();
+    return `${month}/${day}/${year}`;
+  } catch (error) {
+    return '';
+  }
+};
+
+// Validation functions for Indian banking standards
+const validateIFSC = (ifsc) => {
+  if (!ifsc || ifsc.trim() === '') return { isValid: true, message: '' }; // Optional field
+  const trimmedIfsc = ifsc.trim().toUpperCase();
+  
+  // Check for invalid characters first
+  if (!/^[A-Z0-9]+$/.test(trimmedIfsc)) {
+    return { isValid: false, message: 'IFSC code can only contain letters and numbers' };
+  }
+  
+  // Check length
+  if (trimmedIfsc.length !== 11) {
+    return { isValid: false, message: `IFSC code must be exactly 11 characters (currently ${trimmedIfsc.length})` };
+  }
+  
+  // Check format: 4 letters, 0, then 6 alphanumeric
+  const ifscRegex = /^[A-Z]{4}0[A-Z0-9]{6}$/;
+  if (!ifscRegex.test(trimmedIfsc)) {
+    return { isValid: false, message: 'IFSC format: 4 letters, 0, then 6 alphanumeric (e.g., HDFC0001234)' };
+  }
+  return { isValid: true, message: '' };
+};
+
+const validatePAN = (pan) => {
+  if (!pan || pan.trim() === '') return { isValid: true, message: '' }; // Optional field
+  const trimmedPan = pan.trim().toUpperCase();
+  
+  // Check length first
+  if (trimmedPan.length !== 10) {
+    return { isValid: false, message: `PAN must be exactly 10 characters (currently ${trimmedPan.length})` };
+  }
+  
+  // Check format: 5 letters, 4 digits, 1 letter
+  const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
+  if (!panRegex.test(trimmedPan)) {
+    return { isValid: false, message: 'PAN format: 5 letters, 4 digits, 1 letter (e.g., ABCDE1234F)' };
+  }
+  return { isValid: true, message: '' };
+};
+
+const validateUAN = (uan) => {
+  if (!uan || uan.trim() === '') return { isValid: true, message: '' }; // Optional field
+  const trimmedUan = uan.trim();
+  
+  // Check for non-digits
+  if (!/^[0-9]+$/.test(trimmedUan)) {
+    return { isValid: false, message: 'UAN must contain only digits' };
+  }
+  
+  // Check length
+  if (trimmedUan.length !== 12) {
+    return { isValid: false, message: `UAN must be exactly 12 digits (currently ${trimmedUan.length})` };
+  }
+  return { isValid: true, message: '' };
+};
+
+const validateBIC = (bic) => {
+  if (!bic || bic.trim() === '') return { isValid: true, message: '' }; // Optional field
+  const trimmedBic = bic.trim().toUpperCase();
+  
+  // Check length
+  if (trimmedBic.length !== 8 && trimmedBic.length !== 11) {
+    return { isValid: false, message: `BIC/SWIFT code must be 8 or 11 characters (currently ${trimmedBic.length})` };
+  }
+  
+  // Check format
+  const bicRegex = /^[A-Z]{4}[A-Z]{2}[A-Z0-9]{2}([A-Z0-9]{3})?$/;
+  if (!bicRegex.test(trimmedBic)) {
+    return { isValid: false, message: 'BIC/SWIFT format invalid (e.g., HDFCINBB or HDFCINBB123)' };
+  }
+  return { isValid: true, message: '' };
+};
+
+const validateAccountNumber = (accountNumber) => {
+  if (!accountNumber || accountNumber.trim() === '') return { isValid: true, message: '' }; // Optional field
+  const trimmedAccount = accountNumber.trim();
+  
+  // Check for invalid characters
+  if (!/^[A-Z0-9]+$/i.test(trimmedAccount)) {
+    return { isValid: false, message: 'Account number can only contain letters and numbers' };
+  }
+  
+  // Check length
+  if (trimmedAccount.length < 9 || trimmedAccount.length > 18) {
+    return { isValid: false, message: `Account number must be 9-18 characters (currently ${trimmedAccount.length})` };
+  }
+  return { isValid: true, message: '' };
+};
+
 const EmployeeInfo = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const employeeId = location.state?.employeeId;
+  const [employeeId, setEmployeeId] = useState(location.state?.employeeId || null);
   const fromRegistration = location.state?.fromRegistration;
 
   const [formData, setFormData] = useState({
@@ -21,7 +148,6 @@ const EmployeeInfo = () => {
     gender: '',
     address: '',
     department: '',
-    position: '',
     hireDate: '',
     salary: '',
     role: 'Employee',
@@ -63,6 +189,15 @@ const EmployeeInfo = () => {
     bicCode: ''
   });
 
+  // Validation errors for private info
+  const [privateInfoErrors, setPrivateInfoErrors] = useState({
+    bankAccountNumber: '',
+    ifscCode: '',
+    panNumber: '',
+    uanNumber: '',
+    bicCode: ''
+  });
+
   // Salary info data
   const [salaryInfo, setSalaryInfo] = useState({
     wageType: 'Fixed',
@@ -71,15 +206,15 @@ const EmployeeInfo = () => {
     basicSalary: '',
     basicSalaryPercentage: 60,
     hra: '',
-    hraPercentage: 10,
+    hraPercentage: 6,
     standardAllowance: '',
-    standardAllowancePercentage: 0.5,
+    standardAllowancePercentage: 0,
     performanceBonus: '',
-    performanceBonusPercentage: 8.33,
+    performanceBonusPercentage: 0,
     leaveTravelAllowance: '',
-    leaveTravelAllowancePercentage: 8.33,
+    leaveTravelAllowancePercentage: 0,
     fixedAllowance: '',
-    fixedAllowancePercentage: 0,
+    fixedAllowancePercentage: 23.50,
     pfEmployee: '',
     pfEmployeePercentage: 12,
     pfEmployer: '',
@@ -126,12 +261,11 @@ const EmployeeInfo = () => {
         lastName: emp.last_name || '',
         email: emp.email || '',
         phoneNumber: emp.phone_number || '',
-        dateOfBirth: emp.date_of_birth || '',
+        dateOfBirth: formatDateForInput(emp.date_of_birth),
         gender: emp.gender || '',
         address: emp.address || '',
         department: emp.department || '',
-        position: emp.position || '',
-        hireDate: emp.hire_date || '',
+        hireDate: formatDateForInput(emp.hire_date),
         salary: emp.salary || '',
         role: emp.role || 'Employee',
         managerId: emp.manager_id || ''
@@ -159,6 +293,15 @@ const EmployeeInfo = () => {
           panNumber: data.pan_number || '',
           uanNumber: data.uan_number || '',
           bicCode: data.bic_code || ''
+        });
+        
+        // Clear validation errors when loading data
+        setPrivateInfoErrors({
+          bankAccountNumber: '',
+          ifscCode: '',
+          panNumber: '',
+          uanNumber: '',
+          bicCode: ''
         });
 
         // Set resume data
@@ -212,20 +355,59 @@ const EmployeeInfo = () => {
       const response = await api.get('/auth/me');
       if (response.data.user?.employee) {
         const emp = response.data.user.employee;
+        // Set the employee ID so we can save data later
+        setEmployeeId(emp.id);
         setFormData({
           employeeId: emp.employee_id || '',
           firstName: emp.first_name || '',
           lastName: emp.last_name || '',
           email: emp.email || response.data.user.email || '',
           phoneNumber: emp.phone_number || '',
-          dateOfBirth: emp.date_of_birth || '',
+          dateOfBirth: formatDateForInput(emp.date_of_birth),
           gender: emp.gender || '',
           address: emp.address || '',
           department: emp.department || '',
-          position: emp.position || '',
-          hireDate: emp.hire_date || '',
+          hireDate: formatDateForInput(emp.hire_date),
           salary: emp.salary || ''
         });
+        
+        // Also fetch profile data (resume, private info, salary info)
+        try {
+          const profileResponse = await api.get(`/profile/${emp.id}`);
+          const data = profileResponse.data;
+          
+          // Set private info
+          setPrivateInfo({
+            nationality: data.nationality || '',
+            maritalStatus: data.marital_status || '',
+            bankAccountNumber: data.bank_account_number || '',
+            bankName: data.bank_name || '',
+            ifscCode: data.ifsc_code || '',
+            panNumber: data.pan_number || '',
+            uanNumber: data.uan_number || '',
+            bicCode: data.bic_code || ''
+          });
+          
+          // Clear validation errors when loading data
+          setPrivateInfoErrors({
+            bankAccountNumber: '',
+            ifscCode: '',
+            panNumber: '',
+            uanNumber: '',
+            bicCode: ''
+          });
+
+          // Set resume data
+          setResumeData({
+            about: data.about || '',
+            jobLove: data.job_love || '',
+            interests: data.interests || '',
+            skills: data.skills || [],
+            certifications: data.certifications || []
+          });
+        } catch (profileError) {
+          console.error('Failed to fetch profile data:', profileError);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch current employee:', error);
@@ -288,7 +470,6 @@ const EmployeeInfo = () => {
           gender: formData.gender,
           address: formData.address,
           department: formData.department,
-          position: formData.position,
           hireDate: formData.hireDate,
           salary: formData.salary,
           managerId: formData.managerId || null
@@ -340,9 +521,6 @@ const EmployeeInfo = () => {
         }
         if (formData.department) {
           requestBody.department = formData.department;
-        }
-        if (formData.position) {
-          requestBody.position = formData.position;
         }
         if (formData.hireDate) {
           requestBody.hireDate = formData.hireDate;
@@ -491,19 +669,109 @@ const EmployeeInfo = () => {
   };
 
   // Handlers for Private Info
+  const validateField = (field, value) => {
+    let validation = { isValid: true, message: '' };
+    switch (field) {
+      case 'bankAccountNumber':
+        validation = validateAccountNumber(value);
+        break;
+      case 'ifscCode':
+        validation = validateIFSC(value);
+        break;
+      case 'panNumber':
+        validation = validatePAN(value);
+        break;
+      case 'uanNumber':
+        validation = validateUAN(value);
+        break;
+      case 'bicCode':
+        validation = validateBIC(value);
+        break;
+      default:
+        break;
+    }
+    return validation;
+  };
+
+  const handlePrivateInfoChange = (field, value) => {
+    // Update the field value
+    setPrivateInfo(prev => ({ ...prev, [field]: value }));
+    
+    // Validate immediately on change
+    const validation = validateField(field, value);
+    
+    // Update error state - this will trigger re-render if error changes
+    setPrivateInfoErrors(prev => ({
+      ...prev,
+      [field]: validation.isValid ? '' : validation.message
+    }));
+  };
+
+  const handlePrivateInfoBlur = (field, value) => {
+    // Trim whitespace on blur
+    const trimmedValue = value.trim();
+    if (trimmedValue !== value) {
+      setPrivateInfo({ ...privateInfo, [field]: trimmedValue });
+    }
+    
+    // Validate on blur
+    const validation = validateField(field, trimmedValue);
+    setPrivateInfoErrors({
+      ...privateInfoErrors,
+      [field]: validation.isValid ? '' : validation.message
+    });
+  };
+
   const handleSavePrivateInfo = async () => {
-    if (!employeeId) return;
+    if (!employeeId) {
+      toast.error('Employee ID not found. Please refresh the page and try again.');
+      return;
+    }
+    
+    // Validate all fields before saving
+    const accountValidation = validateAccountNumber(privateInfo.bankAccountNumber);
+    const ifscValidation = validateIFSC(privateInfo.ifscCode);
+    const panValidation = validatePAN(privateInfo.panNumber);
+    const uanValidation = validateUAN(privateInfo.uanNumber);
+    const bicValidation = validateBIC(privateInfo.bicCode);
+    
+    const errors = {
+      bankAccountNumber: accountValidation.isValid ? '' : accountValidation.message,
+      ifscCode: ifscValidation.isValid ? '' : ifscValidation.message,
+      panNumber: panValidation.isValid ? '' : panValidation.message,
+      uanNumber: uanValidation.isValid ? '' : uanValidation.message,
+      bicCode: bicValidation.isValid ? '' : bicValidation.message
+    };
+    
+    setPrivateInfoErrors(errors);
+    
+    // Check if there are any validation errors
+    const hasErrors = Object.values(errors).some(error => error !== '');
+    if (hasErrors) {
+      toast.error('Please fix all validation errors before saving');
+      return;
+    }
+    
     setSaving(true);
     try {
+      // Trim all values before saving
       await api.put(`/profile/${employeeId}`, {
-        nationality: privateInfo.nationality,
-        maritalStatus: privateInfo.maritalStatus,
-        bankAccountNumber: privateInfo.bankAccountNumber,
-        bankName: privateInfo.bankName,
-        ifscCode: privateInfo.ifscCode,
-        panNumber: privateInfo.panNumber,
-        uanNumber: privateInfo.uanNumber,
-        bicCode: privateInfo.bicCode
+        nationality: privateInfo.nationality?.trim() || '',
+        maritalStatus: privateInfo.maritalStatus?.trim() || '',
+        bankAccountNumber: privateInfo.bankAccountNumber?.trim().toUpperCase() || '',
+        bankName: privateInfo.bankName?.trim() || '',
+        ifscCode: privateInfo.ifscCode?.trim().toUpperCase() || '',
+        panNumber: privateInfo.panNumber?.trim().toUpperCase() || '',
+        uanNumber: privateInfo.uanNumber?.trim() || '',
+        bicCode: privateInfo.bicCode?.trim().toUpperCase() || ''
+      });
+      // Clear validation errors on successful save
+      setPrivateInfoErrors({
+        bankAccountNumber: '',
+        ifscCode: '',
+        panNumber: '',
+        uanNumber: '',
+        bicCode: ''
       });
       toast.success('Private information saved successfully');
     } catch (error) {
@@ -834,11 +1102,10 @@ const EmployeeInfo = () => {
                 name="email"
                 value={formData.email}
                 onChange={handleChange}
-                placeholder="Optional - will auto-generate if empty"
+                
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
               />
-              <p className="text-xs text-gray-500 mt-1">Leave empty to auto-generate email</p>
-            </div>
+             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
@@ -929,24 +1196,6 @@ const EmployeeInfo = () => {
                     <option value="Marketing">Marketing</option>
                     <option value="Sales">Sales</option>
                     <option value="Operations">Operations</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Position</label>
-                  <select
-                    name="position"
-                    value={formData.position}
-                    onChange={handleChange}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">Select Position</option>
-                    <option value="Manager">Manager</option>
-                    <option value="Senior Manager">Senior Manager</option>
-                    <option value="Director">Director</option>
-                    <option value="Executive">Executive</option>
-                    <option value="Associate">Associate</option>
-                    <option value="Intern">Intern</option>
                   </select>
                 </div>
 
@@ -1174,16 +1423,27 @@ const EmployeeInfo = () => {
                   </div>
                   <div className="space-y-2">
                     {resumeData.certifications.map((cert) => (
-                      <div key={cert.id} className="flex items-center justify-between bg-gray-50 p-2 rounded">
-                        <div>
-                          <span className="font-medium">{cert.certification_name}</span>
-                          {cert.issuing_organization && (
-                            <span className="text-sm text-gray-600 ml-2">- {cert.issuing_organization}</span>
-                          )}
+                      <div key={cert.id} className="flex items-center justify-between bg-gray-50 p-3 rounded">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-medium text-gray-800">{cert.certification_name}</span>
+                            {cert.issuing_organization && (
+                              <span className="text-sm text-gray-600">- {cert.issuing_organization}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-4 text-xs text-gray-500">
+                            {cert.issue_date && (
+                              <span className="text-gray-700 font-medium">{formatDateForDisplay(cert.issue_date)}</span>
+                            )}
+                            {cert.expiry_date && (
+                               <span className="text-gray-700 font-medium">{formatDateForDisplay(cert.expiry_date)}</span>
+                            )}
+                          </div>
                         </div>
                         <button
                           onClick={() => handleDeleteCertificationClick(cert.id, cert.certification_name)}
-                          className="text-red-600 hover:text-red-800"
+                          className="text-red-600 hover:text-red-800 ml-3 flex-shrink-0"
+                          title="Delete certification"
                         >
                           ✕
                         </button>
@@ -1232,9 +1492,18 @@ const EmployeeInfo = () => {
                   <input
                     type="text"
                     value={privateInfo.bankAccountNumber}
-                    onChange={(e) => setPrivateInfo({ ...privateInfo, bankAccountNumber: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    onChange={(e) => handlePrivateInfoChange('bankAccountNumber', e.target.value)}
+                    onBlur={(e) => handlePrivateInfoBlur('bankAccountNumber', e.target.value)}
+                    className={`w-full px-3 py-2 border rounded-lg ${
+                      privateInfoErrors.bankAccountNumber 
+                        ? 'border-red-500 focus:ring-red-500 focus:border-red-500' 
+                        : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                    }`}
+                    placeholder="9-18 alphanumeric characters"
                   />
+                  {privateInfoErrors.bankAccountNumber && (
+                    <p className="mt-1 text-sm text-red-600">{privateInfoErrors.bankAccountNumber}</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Bank Name</label>
@@ -1242,7 +1511,7 @@ const EmployeeInfo = () => {
                     type="text"
                     value={privateInfo.bankName}
                     onChange={(e) => setPrivateInfo({ ...privateInfo, bankName: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
                 <div>
@@ -1250,36 +1519,76 @@ const EmployeeInfo = () => {
                   <input
                     type="text"
                     value={privateInfo.ifscCode}
-                    onChange={(e) => setPrivateInfo({ ...privateInfo, ifscCode: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    onChange={(e) => handlePrivateInfoChange('ifscCode', e.target.value.toUpperCase())}
+                    onBlur={(e) => handlePrivateInfoBlur('ifscCode', e.target.value.toUpperCase())}
+                    className={`w-full px-3 py-2 border rounded-lg ${
+                      privateInfoErrors.ifscCode 
+                        ? 'border-red-500 focus:ring-red-500 focus:border-red-500' 
+                        : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                    }`}
+                    placeholder="HDFC0001234"
+                    maxLength={11}
                   />
+                  {privateInfoErrors.ifscCode && (
+                    <p className="mt-1 text-sm text-red-600">{privateInfoErrors.ifscCode}</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">PAN No.</label>
                   <input
                     type="text"
                     value={privateInfo.panNumber}
-                    onChange={(e) => setPrivateInfo({ ...privateInfo, panNumber: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    onChange={(e) => handlePrivateInfoChange('panNumber', e.target.value.toUpperCase())}
+                    onBlur={(e) => handlePrivateInfoBlur('panNumber', e.target.value.toUpperCase())}
+                    className={`w-full px-3 py-2 border rounded-lg ${
+                      privateInfoErrors.panNumber 
+                        ? 'border-red-500 focus:ring-red-500 focus:border-red-500' 
+                        : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                    }`}
+                    placeholder="ABCDE1234F"
+                    maxLength={10}
                   />
+                  {privateInfoErrors.panNumber && (
+                    <p className="mt-1 text-sm text-red-600">{privateInfoErrors.panNumber}</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">UAN No.</label>
                   <input
                     type="text"
                     value={privateInfo.uanNumber}
-                    onChange={(e) => setPrivateInfo({ ...privateInfo, uanNumber: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    onChange={(e) => handlePrivateInfoChange('uanNumber', e.target.value.replace(/\D/g, ''))}
+                    onBlur={(e) => handlePrivateInfoBlur('uanNumber', e.target.value.replace(/\D/g, ''))}
+                    className={`w-full px-3 py-2 border rounded-lg ${
+                      privateInfoErrors.uanNumber 
+                        ? 'border-red-500 focus:ring-red-500 focus:border-red-500' 
+                        : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                    }`}
+                    placeholder="12 digits"
+                    maxLength={12}
                   />
+                  {privateInfoErrors.uanNumber && (
+                    <p className="mt-1 text-sm text-red-600">{privateInfoErrors.uanNumber}</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">BIC Code</label>
                   <input
                     type="text"
                     value={privateInfo.bicCode}
-                    onChange={(e) => setPrivateInfo({ ...privateInfo, bicCode: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    onChange={(e) => handlePrivateInfoChange('bicCode', e.target.value.toUpperCase())}
+                    onBlur={(e) => handlePrivateInfoBlur('bicCode', e.target.value.toUpperCase())}
+                    className={`w-full px-3 py-2 border rounded-lg ${
+                      privateInfoErrors.bicCode 
+                        ? 'border-red-500 focus:ring-red-500 focus:border-red-500' 
+                        : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+                    }`}
+                    placeholder="HDFCINBB or HDFCINBB123"
+                    maxLength={11}
                   />
+                  {privateInfoErrors.bicCode && (
+                    <p className="mt-1 text-sm text-red-600">{privateInfoErrors.bicCode}</p>
+                  )}
                 </div>
                 <button
                   onClick={handleSavePrivateInfo}
